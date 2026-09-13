@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>朣朣 智慧藥局管理系統</title>
+    <title>朣朣 智慧藥局管理系統 (企業旗艦版)</title>
     <!-- Tailwind CSS & FontAwesome -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <!-- Paho MQTT 官方跨裝置即時通訊庫>
+    <!-- Paho MQTT 官方跨裝置即時通訊庫 (輕量純前端，支援手機、平板、電腦無縫互聯) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
@@ -1006,13 +1006,19 @@
             <div class="p-5 space-y-3.5 text-xs">
                 <div>
                     <label class="block font-bold text-slate-700 mb-1">費用類別</label>
-                    <select id="exp-category" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold">
+                    <select id="exp-category" onchange="toggleCustomExpense(this.value)" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-amber-500">
                         <option value="店面租金">店面租金</option>
                         <option value="水電瓦斯">水電瓦斯</option>
                         <option value="人事薪資">人事薪資</option>
                         <option value="行銷雜支">行銷雜支</option>
                         <option value="醫藥耗材">醫藥耗材</option>
+                        <option value="門市修繕">門市修繕</option>
+                        <option value="自訂">✨ 自訂費用項目 (自行輸入)</option>
                     </select>
+                    <div id="exp-custom-wrap" class="hidden mt-2">
+                        <label class="block font-bold text-amber-800 mb-1">自訂費用名稱 *</label>
+                        <input type="text" id="exp-custom-category" class="w-full p-2.5 border border-amber-300 bg-amber-50/60 rounded-xl font-bold outline-none focus:border-amber-500" placeholder="例如: 網路電信費 / 會計師公費 / 設備保養">
+                    </div>
                 </div>
                 <div>
                     <label class="block font-bold text-slate-700 mb-1">支出金額 ($)</label>
@@ -2869,14 +2875,33 @@
             }
         }
 
+        window.toggleCustomExpense = function(val) {
+            const wrap = document.getElementById('exp-custom-wrap');
+            const input = document.getElementById('exp-custom-category');
+            if (val === '自訂') {
+                wrap.classList.remove('hidden');
+                setTimeout(() => input.focus(), 50);
+            } else {
+                wrap.classList.add('hidden');
+            }
+        };
+
         window.openExpenseModal = function() {
+            document.getElementById('exp-category').value = '店面租金';
+            document.getElementById('exp-custom-category').value = '';
+            document.getElementById('exp-custom-wrap').classList.add('hidden');
             document.getElementById('exp-amount').value = '';
             document.getElementById('exp-note').value = '';
             window.openModal('modal-expense');
         };
 
         window.saveExpense = function() {
-            const cat = document.getElementById('exp-category').value;
+            let cat = document.getElementById('exp-category').value;
+            if (cat === '自訂') {
+                const custom = document.getElementById('exp-custom-category').value.trim();
+                if (!custom) return window.showToast('請填寫自訂費用項目名稱', 'error');
+                cat = custom;
+            }
             const amt = parseInt(document.getElementById('exp-amount').value) || 0;
             const note = document.getElementById('exp-note').value.trim();
 
@@ -2890,11 +2915,11 @@
                 time: new Date().toLocaleDateString()
             });
 
-            addAuditLog('費用申報', `申報營業費用: ${cat} $${amt} (${note})`);
+            addAuditLog('費用申報', `申報營業費用: 【${cat}】 $${amt} (${note || '無備註'})`);
             saveDB();
             renderAccounting();
             window.closeModal('modal-expense');
-            window.showToast('營業費用已入帳！');
+            window.showToast('營業費用已成功入帳！');
         };
 
         window.openPOModal = function() {
