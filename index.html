@@ -541,18 +541,32 @@
                     </div>
                 </div>
 
-                <!-- 庫存即時搜尋與狀態列 -->
+                <!-- 庫存即時搜尋與多維排序列 -->
                 <div
-                    class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
+                    class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
                     <div class="relative flex-1 max-w-md">
                         <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                         <input type="text" id="inventory-search-bar" oninput="renderInventory()"
                             placeholder="搜尋品項名稱、條碼、藥品代碼、批號、分類、廠商..."
                             class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-500 font-medium">
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2.5">
+                        <div class="flex items-center gap-1.5">
+                            <label class="text-xs font-bold text-slate-500 whitespace-nowrap"><i
+                                    class="fas fa-arrow-down-a-z text-indigo-500 mr-1"></i>排序方式：</label>
+                            <select id="inv-sort-select" onchange="changeInventorySort(this.value)"
+                                class="bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs py-1.5 px-2.5 rounded-xl outline-none focus:border-indigo-500">
+                                <option value="expiry_asc">保存期限：由近到遠 (優先過期)</option>
+                                <option value="expiry_desc">保存期限：由遠到近 (較新批號)</option>
+                                <option value="stock_desc">數量：由多到少 (庫存高至低)</option>
+                                <option value="stock_asc">數量：由少到多 (庫存低至高)</option>
+                                <option value="inward_desc">進貨日期：由新到舊 (最新進貨)</option>
+                                <option value="inward_asc">進貨日期：由舊到新 (最早進貨)</option>
+                                <option value="name_asc">品項名稱：A → Z</option>
+                            </select>
+                        </div>
                         <span id="inventory-count-badge"
-                            class="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-xl border border-indigo-100 font-mono text-xs font-bold">共
+                            class="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded-xl border border-indigo-100 font-mono text-xs font-bold whitespace-nowrap">共
                             0 項品項</span>
                     </div>
                 </div>
@@ -560,12 +574,37 @@
                 <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
-                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold select-none">
                                 <tr>
-                                    <th class="p-3.5">品項名稱 (分類)</th>
+                                    <th class="p-3.5 cursor-pointer hover:text-indigo-600 transition-colors"
+                                        onclick="toggleInventorySort('name')" title="點擊切換品名排序">
+                                        <div class="flex items-center gap-1.5">
+                                            <span>品項名稱 (分類)</span>
+                                            <i id="sort-icon-name" class="fas fa-sort text-slate-400 text-[10px]"></i>
+                                        </div>
+                                    </th>
                                     <th class="p-3.5">生產批號</th>
-                                    <th class="p-3.5">有效期限 (天數)</th>
-                                    <th class="p-3.5">現有庫存 / 安全水位</th>
+                                    <th class="p-3.5 cursor-pointer hover:text-indigo-600 transition-colors"
+                                        onclick="toggleInventorySort('inward')" title="點擊切換進貨日排序">
+                                        <div class="flex items-center gap-1.5">
+                                            <span>進貨日期</span>
+                                            <i id="sort-icon-inward" class="fas fa-sort text-slate-400 text-[10px]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="p-3.5 cursor-pointer hover:text-indigo-600 transition-colors"
+                                        onclick="toggleInventorySort('expiry')" title="點擊切換保存期限排序">
+                                        <div class="flex items-center gap-1.5">
+                                            <span>有效期限 (天數)</span>
+                                            <i id="sort-icon-expiry" class="fas fa-sort text-slate-400 text-[10px]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="p-3.5 cursor-pointer hover:text-indigo-600 transition-colors"
+                                        onclick="toggleInventorySort('stock')" title="點擊切換庫存數量排序">
+                                        <div class="flex items-center gap-1.5">
+                                            <span>現有庫存 / 安全水位</span>
+                                            <i id="sort-icon-stock" class="fas fa-sort text-slate-400 text-[10px]"></i>
+                                        </div>
+                                    </th>
                                     <th class="p-3.5">售價 / 進貨成本</th>
                                     <th class="p-3.5 text-center">狀態</th>
                                     <th class="p-3.5 text-center">操作</th>
@@ -763,22 +802,71 @@
                     <p class="text-slate-500 text-xs font-medium">門市結帳時購買之奶粉、營養品寄存，提領時自動扣減件數並保留審計紀錄。</p>
                 </div>
 
-                <!-- 寄庫搜尋與篩選列 -->
-                <div
-                    class="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-2xs">
-                    <div class="relative flex-1 max-w-md">
-                        <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                        <input type="text" id="deposit-search-bar" oninput="renderDeposits()"
-                            placeholder="搜尋顧客姓名、電話、商品名稱、原單號或提領憑證..."
-                            class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-500 font-medium">
+                <!-- 寄庫搜尋與時間/狀態多維篩選列 -->
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
+                    <div class="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+                        <div class="relative flex-1 max-w-md">
+                            <i
+                                class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="deposit-search-bar" oninput="renderDeposits()"
+                                placeholder="搜尋顧客姓名、電話、商品名稱、原單號或提領憑證..."
+                                class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-xl text-xs outline-none focus:border-indigo-500 font-medium">
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-slate-500 mr-1">狀態：</span>
+                            <button onclick="filterDepositStatus('all')" id="dep-filter-all"
+                                class="px-3 py-1.5 rounded-xl font-bold text-xs bg-indigo-600 text-white shadow-xs transition-colors">全部</button>
+                            <button onclick="filterDepositStatus('active')" id="dep-filter-active"
+                                class="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">待提領</button>
+                            <button onclick="filterDepositStatus('completed')" id="dep-filter-completed"
+                                class="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">已領清</button>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="filterDepositStatus('all')" id="dep-filter-all"
-                            class="px-3 py-1.5 rounded-xl font-bold text-xs bg-indigo-600 text-white shadow-xs transition-colors">全部</button>
-                        <button onclick="filterDepositStatus('active')" id="dep-filter-active"
-                            class="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">待提領</button>
-                        <button onclick="filterDepositStatus('completed')" id="dep-filter-completed"
-                            class="px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">已領清</button>
+
+                    <!-- 寄庫時間篩選控制區 (年份/週/日期起訖/快選) -->
+                    <div class="pt-2.5 border-t border-slate-100 space-y-2">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                                <span class="text-xs font-bold text-slate-500 mr-1"><i
+                                        class="fas fa-calendar-days text-indigo-500 mr-1"></i>寄庫/提領時間：</span>
+                                <button onclick="setDepositTimePreset('all')" id="dep-btn-preset-all"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-indigo-600 text-white shadow-2xs transition-colors">全部時間</button>
+                                <button onclick="setDepositTimePreset('today')" id="dep-btn-preset-today"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今日</button>
+                                <button onclick="setDepositTimePreset('week')" id="dep-btn-preset-week"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本週</button>
+                                <button onclick="setDepositTimePreset('month')" id="dep-btn-preset-month"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本月</button>
+                                <button onclick="setDepositTimePreset('year')" id="dep-btn-preset-year"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今年</button>
+                            </div>
+                            <button onclick="resetDepositTimeFilter()"
+                                class="text-[11px] text-slate-500 hover:text-indigo-600 font-bold transition-colors">
+                                <i class="fas fa-rotate-left mr-1"></i>重設時間篩選
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2 text-xs">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-bold shrink-0">依年份：</span>
+                                <select id="deposit-filter-year" onchange="onDepositTimeChange('year')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">全部年份</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-bold shrink-0">依週別：</span>
+                                <input type="week" id="deposit-filter-week" onchange="onDepositTimeChange('week')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                            </div>
+                            <div class="flex items-center gap-1.5 sm:col-span-1 lg:col-span-2">
+                                <span class="text-slate-500 font-bold shrink-0">自訂起訖：</span>
+                                <input type="date" id="deposit-filter-start" onchange="onDepositTimeChange('custom')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                                <span class="text-slate-400">~</span>
+                                <input type="date" id="deposit-filter-end" onchange="onDepositTimeChange('custom')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -818,6 +906,53 @@
                         <i class="fas fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
                         <input type="text" id="order-search" onkeyup="renderOrders()" placeholder="搜尋單號、日期、顧客、批號..."
                             class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-xs text-slate-800">
+                    </div>
+                </div>
+
+                <!-- 歷史單據時間篩選控制區 (年份/週/日期起訖/快選) -->
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                            <span class="text-xs font-bold text-slate-500 mr-1"><i
+                                    class="fas fa-calendar-days text-indigo-500 mr-1"></i>交易/退單時間：</span>
+                            <button onclick="setOrderTimePreset('all')" id="order-btn-preset-all"
+                                class="px-2.5 py-1 rounded-lg font-bold text-xs bg-indigo-600 text-white shadow-2xs transition-colors">全部時間</button>
+                            <button onclick="setOrderTimePreset('today')" id="order-btn-preset-today"
+                                class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今日</button>
+                            <button onclick="setOrderTimePreset('week')" id="order-btn-preset-week"
+                                class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本週</button>
+                            <button onclick="setOrderTimePreset('month')" id="order-btn-preset-month"
+                                class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本月</button>
+                            <button onclick="setOrderTimePreset('year')" id="order-btn-preset-year"
+                                class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今年</button>
+                        </div>
+                        <button onclick="resetOrderTimeFilter()"
+                            class="text-[11px] text-slate-500 hover:text-indigo-600 font-bold transition-colors">
+                            <i class="fas fa-rotate-left mr-1"></i>重設時間篩選
+                        </button>
+                    </div>
+                    <div
+                        class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2 text-xs pt-2 border-t border-slate-100">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-slate-500 font-bold shrink-0">依年份：</span>
+                            <select id="order-filter-year" onchange="onOrderTimeChange('year')"
+                                class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500">
+                                <option value="">全部年份</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-slate-500 font-bold shrink-0">依週別：</span>
+                            <input type="week" id="order-filter-week" onchange="onOrderTimeChange('week')"
+                                class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                        </div>
+                        <div class="flex items-center gap-1.5 sm:col-span-1 lg:col-span-2">
+                            <span class="text-slate-500 font-bold shrink-0">自訂起訖：</span>
+                            <input type="date" id="order-filter-start" onchange="onOrderTimeChange('custom')"
+                                class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                            <span class="text-slate-400">~</span>
+                            <input type="date" id="order-filter-end" onchange="onOrderTimeChange('custom')"
+                                class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                        </div>
                     </div>
                 </div>
 
@@ -1113,10 +1248,7 @@
                             <i class="fas fa-shield-check"></i>
                             <span>一鍵驗證雜湊鏈完整性</span>
                         </button>
-                        <button id="btn-clear-audit" onclick="clearAuditLogs()"
-                            class="bg-rose-50 text-rose-700 hover:bg-rose-100 px-3 py-2 rounded-xl font-bold text-xs border border-rose-200 shadow-sm transition-colors hidden">
-                            清空紀錄 (僅最高管理員)
-                        </button>
+
                     </div>
                 </div>
 
@@ -1165,6 +1297,53 @@
                             class="audit-cat-btn px-3 py-1.5 rounded-xl font-bold transition-all bg-slate-100 hover:bg-slate-200 text-slate-700 shrink-0">人事權限</button>
                         <button onclick="filterAuditCategory('系統安全')" id="audit-cat-系統安全"
                             class="audit-cat-btn px-3 py-1.5 rounded-xl font-bold transition-all bg-slate-100 hover:bg-slate-200 text-slate-700 shrink-0">系統安全</button>
+                    </div>
+
+                    <!-- 安全審計軌跡時間篩選控制區 (年份/週/日期起訖/快選) -->
+                    <div class="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs space-y-2.5">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 flex-wrap text-xs">
+                                <span class="text-xs font-bold text-slate-500 mr-1"><i
+                                        class="fas fa-calendar-days text-indigo-500 mr-1"></i>軌跡時間篩選：</span>
+                                <button onclick="setAuditTimePreset('all')" id="audit-btn-preset-all"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-indigo-600 text-white shadow-2xs transition-colors">全部時間</button>
+                                <button onclick="setAuditTimePreset('today')" id="audit-btn-preset-today"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今日</button>
+                                <button onclick="setAuditTimePreset('week')" id="audit-btn-preset-week"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本週</button>
+                                <button onclick="setAuditTimePreset('month')" id="audit-btn-preset-month"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">本月</button>
+                                <button onclick="setAuditTimePreset('year')" id="audit-btn-preset-year"
+                                    class="px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">今年</button>
+                            </div>
+                            <button onclick="resetAuditTimeFilter()"
+                                class="text-[11px] text-slate-500 hover:text-indigo-600 font-bold transition-colors">
+                                <i class="fas fa-rotate-left mr-1"></i>重設時間篩選
+                            </button>
+                        </div>
+                        <div
+                            class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-4 gap-2 text-xs pt-2 border-t border-slate-100">
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-bold shrink-0">依年份：</span>
+                                <select id="audit-filter-year" onchange="onAuditTimeChange('year')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500">
+                                    <option value="">全部年份</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <span class="text-slate-500 font-bold shrink-0">依週別：</span>
+                                <input type="week" id="audit-filter-week" onchange="onAuditTimeChange('week')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                            </div>
+                            <div class="flex items-center gap-1.5 sm:col-span-1 lg:col-span-2">
+                                <span class="text-slate-500 font-bold shrink-0">自訂起訖：</span>
+                                <input type="date" id="audit-filter-start" onchange="onAuditTimeChange('custom')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                                <span class="text-slate-400">~</span>
+                                <input type="date" id="audit-filter-end" onchange="onAuditTimeChange('custom')"
+                                    class="w-full py-1.5 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:border-indigo-500 font-mono text-[11px]">
+                            </div>
+                        </div>
                     </div>
 
                     <!-- 即時搜尋輸入框 -->
@@ -1604,10 +1783,17 @@
                             class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono">
                     </div>
                 </div>
-                <div>
-                    <label class="block font-bold text-slate-700 mb-1">安全水位 (低於此數字主動預警) *</label>
-                    <input type="number" id="prod-safestock" min="0" value="10"
-                        class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-amber-600">
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">安全水位 (低於預警) *</label>
+                        <input type="number" id="prod-safestock" min="0" value="10"
+                            class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-amber-600">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">進貨日期 (入庫日) *</label>
+                        <input type="date" id="prod-inward"
+                            class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-slate-700">
+                    </div>
                 </div>
                 <div class="border-t border-slate-100 pt-3">
                     <label class="flex items-center gap-2 cursor-pointer">
@@ -3085,6 +3271,307 @@
         }
 
         // ==============================================================
+        // 全域多維時間與日期解析、過濾核心輔助函式 (年/週/日/快選)
+        // ==============================================================
+
+        function parseItemDateParts(dateStr) {
+            if (!dateStr) return null;
+            if (dateStr instanceof Date) {
+                if (isNaN(dateStr.getTime())) return null;
+                const year = dateStr.getFullYear();
+                const month = dateStr.getMonth() + 1;
+                const day = dateStr.getDate();
+                const dateFormatted = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                return { year, month, day, dateStr: dateFormatted, dateObj: dateStr };
+            }
+            const s = String(dateStr).trim();
+            // 匹配 YYYY/MM/DD 或 YYYY-MM-DD 或 YYYY.MM.DD (兼顧繁中上午/下午後綴)
+            const m = s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
+            if (m) {
+                const year = parseInt(m[1], 10);
+                const month = parseInt(m[2], 10);
+                const day = parseInt(m[3], 10);
+                const dateObj = new Date(year, month - 1, day);
+                const dateFormatted = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                return { year, month, day, dateStr: dateFormatted, dateObj };
+            }
+            const d = new Date(s);
+            if (!isNaN(d.getTime())) {
+                const year = d.getFullYear();
+                const month = d.getMonth() + 1;
+                const day = d.getDate();
+                const dateFormatted = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                return { year, month, day, dateStr: dateFormatted, dateObj: d };
+            }
+            return null;
+        }
+
+        // 計算標準 ISO 8601 週別代碼 (例如 2026-W37)
+        function getISOWeekString(dateObj) {
+            if (!dateObj || isNaN(dateObj.getTime())) return '';
+            const d = new Date(Date.UTC(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+            const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+            const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+            return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+        }
+
+        // 統一多維時間比對器 (年份、週別、自訂日期區間、快選)
+        function matchTimeFilter(rawDate, filterState) {
+            if (!filterState) return true;
+            const parts = parseItemDateParts(rawDate);
+            if (!parts) return true;
+
+            const now = new Date();
+            const todayFormatted = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const currentWeekStr = getISOWeekString(now);
+
+            // 1. 年份篩選
+            if (filterState.year) {
+                if (String(parts.year) !== String(filterState.year)) return false;
+            }
+
+            // 2. 週別篩選 (YYYY-Wxx)
+            if (filterState.week) {
+                const itemWeek = getISOWeekString(parts.dateObj);
+                if (itemWeek !== filterState.week) return false;
+            }
+
+            // 3. 自訂日期起訖
+            if (filterState.startDate) {
+                if (parts.dateStr < filterState.startDate) return false;
+            }
+            if (filterState.endDate) {
+                if (parts.dateStr > filterState.endDate) return false;
+            }
+
+            // 4. 快捷篩選
+            if (filterState.preset === 'today') {
+                if (parts.dateStr !== todayFormatted) return false;
+            } else if (filterState.preset === 'week') {
+                if (getISOWeekString(parts.dateObj) !== currentWeekStr) return false;
+            } else if (filterState.preset === 'month') {
+                if (parts.year !== now.getFullYear() || parts.month !== (now.getMonth() + 1)) return false;
+            } else if (filterState.preset === 'year') {
+                if (parts.year !== now.getFullYear()) return false;
+            }
+
+            return true;
+        }
+
+        // 動態填充年份下拉選單
+        function populateYearSelects() {
+            const currentYear = new Date().getFullYear();
+            const years = new Set([currentYear, currentYear - 1, 2026, 2025]);
+            (window.db.auditLogs || []).forEach(l => {
+                const p = parseItemDateParts(l.time);
+                if (p) years.add(p.year);
+            });
+            (window.db.transactions || []).forEach(t => {
+                const p = parseItemDateParts(t.time);
+                if (p) years.add(p.year);
+            });
+            (window.db.deposits || []).forEach(d => {
+                const p = parseItemDateParts(d.time);
+                if (p) years.add(p.year);
+            });
+            const sortedYears = Array.from(years).sort((a, b) => b - a);
+
+            ['audit-filter-year', 'order-filter-year', 'deposit-filter-year'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                const cur = el.value;
+                el.innerHTML = '<option value="">全部年份</option>' +
+                    sortedYears.map(y => `<option value="${y}">${y} 年</option>`).join('');
+                if (cur) el.value = cur;
+            });
+        }
+
+        // 輔助函式：切換快選按鈕高亮
+        function updateTimePresetButtons(prefix, activePreset) {
+            ['all', 'today', 'week', 'month', 'year'].forEach(p => {
+                const btn = document.getElementById(`${prefix}-btn-preset-${p}`);
+                if (!btn) return;
+                if (p === activePreset) {
+                    btn.className = 'px-2.5 py-1 rounded-lg font-bold text-xs bg-indigo-600 text-white shadow-2xs transition-colors';
+                } else {
+                    btn.className = 'px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors';
+                }
+            });
+        }
+
+        // --- 審計軌跡時間篩選狀態與控制 ---
+        window.auditTimeFilter = { preset: 'all', year: '', week: '', startDate: '', endDate: '' };
+
+        window.setAuditTimePreset = function (preset) {
+            window.auditTimeFilter = { preset: preset, year: '', week: '', startDate: '', endDate: '' };
+            const yEl = document.getElementById('audit-filter-year');
+            const wEl = document.getElementById('audit-filter-week');
+            const sEl = document.getElementById('audit-filter-start');
+            const eEl = document.getElementById('audit-filter-end');
+            if (yEl) yEl.value = '';
+            if (wEl) wEl.value = '';
+            if (sEl) sEl.value = '';
+            if (eEl) eEl.value = '';
+            updateTimePresetButtons('audit', preset);
+            renderAudit();
+        };
+
+        window.onAuditTimeChange = function (type) {
+            const yEl = document.getElementById('audit-filter-year');
+            const wEl = document.getElementById('audit-filter-week');
+            const sEl = document.getElementById('audit-filter-start');
+            const eEl = document.getElementById('audit-filter-end');
+
+            window.auditTimeFilter.preset = '';
+            updateTimePresetButtons('audit', '');
+
+            if (type === 'year') {
+                window.auditTimeFilter.year = yEl ? yEl.value : '';
+            } else if (type === 'week') {
+                window.auditTimeFilter.week = wEl ? wEl.value : '';
+            } else if (type === 'custom') {
+                window.auditTimeFilter.startDate = sEl ? sEl.value : '';
+                window.auditTimeFilter.endDate = eEl ? eEl.value : '';
+            }
+            renderAudit();
+        };
+
+        window.resetAuditTimeFilter = function () {
+            window.setAuditTimePreset('all');
+        };
+
+        // --- 歷史單據時間篩選狀態與控制 ---
+        window.orderTimeFilter = { preset: 'all', year: '', week: '', startDate: '', endDate: '' };
+
+        window.setOrderTimePreset = function (preset) {
+            window.orderTimeFilter = { preset: preset, year: '', week: '', startDate: '', endDate: '' };
+            const yEl = document.getElementById('order-filter-year');
+            const wEl = document.getElementById('order-filter-week');
+            const sEl = document.getElementById('order-filter-start');
+            const eEl = document.getElementById('order-filter-end');
+            if (yEl) yEl.value = '';
+            if (wEl) wEl.value = '';
+            if (sEl) sEl.value = '';
+            if (eEl) eEl.value = '';
+            updateTimePresetButtons('order', preset);
+            renderOrders();
+        };
+
+        window.onOrderTimeChange = function (type) {
+            const yEl = document.getElementById('order-filter-year');
+            const wEl = document.getElementById('order-filter-week');
+            const sEl = document.getElementById('order-filter-start');
+            const eEl = document.getElementById('order-filter-end');
+
+            window.orderTimeFilter.preset = '';
+            updateTimePresetButtons('order', '');
+
+            if (type === 'year') {
+                window.orderTimeFilter.year = yEl ? yEl.value : '';
+            } else if (type === 'week') {
+                window.orderTimeFilter.week = wEl ? wEl.value : '';
+            } else if (type === 'custom') {
+                window.orderTimeFilter.startDate = sEl ? sEl.value : '';
+                window.orderTimeFilter.endDate = eEl ? eEl.value : '';
+            }
+            renderOrders();
+        };
+
+        window.resetOrderTimeFilter = function () {
+            window.setOrderTimePreset('all');
+        };
+
+        // --- 寄庫管理時間篩選狀態與控制 ---
+        window.depositTimeFilter = { preset: 'all', year: '', week: '', startDate: '', endDate: '' };
+
+        window.setDepositTimePreset = function (preset) {
+            window.depositTimeFilter = { preset: preset, year: '', week: '', startDate: '', endDate: '' };
+            const yEl = document.getElementById('deposit-filter-year');
+            const wEl = document.getElementById('deposit-filter-week');
+            const sEl = document.getElementById('deposit-filter-start');
+            const eEl = document.getElementById('deposit-filter-end');
+            if (yEl) yEl.value = '';
+            if (wEl) wEl.value = '';
+            if (sEl) sEl.value = '';
+            if (eEl) eEl.value = '';
+            updateTimePresetButtons('dep', preset);
+            renderDeposits();
+        };
+
+        window.onDepositTimeChange = function (type) {
+            const yEl = document.getElementById('deposit-filter-year');
+            const wEl = document.getElementById('deposit-filter-week');
+            const sEl = document.getElementById('deposit-filter-start');
+            const eEl = document.getElementById('deposit-filter-end');
+
+            window.depositTimeFilter.preset = '';
+            updateTimePresetButtons('dep', '');
+
+            if (type === 'year') {
+                window.depositTimeFilter.year = yEl ? yEl.value : '';
+            } else if (type === 'week') {
+                window.depositTimeFilter.week = wEl ? wEl.value : '';
+            } else if (type === 'custom') {
+                window.depositTimeFilter.startDate = sEl ? sEl.value : '';
+                window.depositTimeFilter.endDate = eEl ? eEl.value : '';
+            }
+            renderDeposits();
+        };
+
+        window.resetDepositTimeFilter = function () {
+            window.setDepositTimePreset('all');
+        };
+
+        // --- 庫存多維排序狀態與處理 ---
+        window.currentInvSort = 'expiry_asc';
+
+        function sortInventoryItems(items, sortKey) {
+            const list = [...items];
+            switch (sortKey) {
+                case 'stock_desc':
+                    return list.sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
+                case 'stock_asc':
+                    return list.sort((a, b) => (Number(a.stock) || 0) - (Number(b.stock) || 0));
+                case 'inward_desc':
+                    return list.sort((a, b) => (b.inwardDate || '').localeCompare(a.inwardDate || ''));
+                case 'inward_asc':
+                    return list.sort((a, b) => (a.inwardDate || '9999-99-99').localeCompare(b.inwardDate || '9999-99-99'));
+                case 'expiry_desc':
+                    return list.sort((a, b) => (b.expiry || '').localeCompare(a.expiry || ''));
+                case 'expiry_asc':
+                    return list.sort((a, b) => (a.expiry || '9999-99-99').localeCompare(b.expiry || '9999-99-99'));
+                case 'name_asc':
+                    return list.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'zh-Hant'));
+                case 'name_desc':
+                    return list.sort((a, b) => (b.name || '').localeCompare(a.name || '', 'zh-Hant'));
+                default:
+                    return list;
+            }
+        }
+
+        window.changeInventorySort = function (val) {
+            window.currentInvSort = val;
+            renderInventory();
+        };
+
+        window.toggleInventorySort = function (field) {
+            if (field === 'stock') {
+                window.currentInvSort = window.currentInvSort === 'stock_desc' ? 'stock_asc' : 'stock_desc';
+            } else if (field === 'inward') {
+                window.currentInvSort = window.currentInvSort === 'inward_desc' ? 'inward_asc' : 'inward_desc';
+            } else if (field === 'expiry') {
+                window.currentInvSort = window.currentInvSort === 'expiry_asc' ? 'expiry_desc' : 'expiry_asc';
+            } else if (field === 'name') {
+                window.currentInvSort = window.currentInvSort === 'name_asc' ? 'name_desc' : 'name_asc';
+            }
+            const select = document.getElementById('inv-sort-select');
+            if (select) select.value = window.currentInvSort;
+            renderInventory();
+        };
+
+        // ==============================================================
         // POS 門市收銀核心 (即時庫存保留 + 條碼槍連掃)
         // ==============================================================
 
@@ -4008,8 +4495,32 @@
                     (i.batch && i.batch.toLowerCase().includes(q)) ||
                     (i.type && i.type.toLowerCase().includes(q)) ||
                     (i.supplier && i.supplier.toLowerCase().includes(q)) ||
-                    (i.vendor && i.vendor.toLowerCase().includes(q))
+                    (i.vendor && i.vendor.toLowerCase().includes(q)) ||
+                    (i.inwardDate && i.inwardDate.toLowerCase().includes(q))
                 );
+            }
+
+            // 多維排序處理 (保存期限、數量多寡、進貨日期、品名)
+            const sortKey = window.currentInvSort || 'expiry_asc';
+            items = sortInventoryItems(items, sortKey);
+
+            // 更新表頭排序箭頭指示器
+            ['name', 'inward', 'expiry', 'stock'].forEach(col => {
+                const icon = document.getElementById(`sort-icon-${col}`);
+                if (!icon) return;
+                if (sortKey === `${col}_asc`) {
+                    icon.className = 'fas fa-sort-up text-indigo-600 text-[10px]';
+                } else if (sortKey === `${col}_desc`) {
+                    icon.className = 'fas fa-sort-down text-indigo-600 text-[10px]';
+                } else {
+                    icon.className = 'fas fa-sort text-slate-400 text-[10px]';
+                }
+            });
+
+            // 同步下拉選單數值
+            const sortSelect = document.getElementById('inv-sort-select');
+            if (sortSelect && sortSelect.value !== sortKey) {
+                sortSelect.value = sortKey;
             }
 
             const countBadge = document.getElementById('inventory-count-badge');
@@ -4033,6 +4544,7 @@
                         <div class="text-[11px] text-slate-400">${p.type === 'OTC' ? '一般成藥' : (p.type === 'Rx' ? '處方藥' : '保健/零售')} ${p.isControlled ? `<span class="text-rose-600 font-bold ml-1">管制藥(級別${p.level})</span>` : ''}</div>
                     </td>
                     <td class="p-3.5 font-mono text-slate-600">${p.batch}</td>
+                    <td class="p-3.5 font-mono text-slate-700 font-bold">${p.inwardDate || '-'}</td>
                     <td class="p-3.5 font-mono">
                         <span class="${isExp ? 'text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-lg' : 'text-slate-600'}">
                             ${p.expiry} ${isExp ? '⚠️臨期' : ''}
@@ -4061,7 +4573,7 @@
             });
 
             if (items.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-boxes-stacked text-3xl mb-2 opacity-40"></i><br>${q ? '查無相符庫存藥品/品項' : '目前尚無庫存資料，請點擊右上角【新增商品/藥品】建檔'}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-boxes-stacked text-3xl mb-2 opacity-40"></i><br>${q ? '查無相符庫存藥品/品項' : '目前尚無庫存資料，請點擊右上角【新增商品/藥品】建檔'}</td></tr>`;
             }
         }
 
@@ -4093,11 +4605,14 @@
 
         window.openProductModal = function () {
             document.getElementById('modal-product-title').innerText = '新增商品/藥品';
-            ['prod-id', 'prod-name', 'prod-batch', 'prod-expiry', 'prod-price', 'prod-cost', 'prod-stock', 'prod-safestock'].forEach(id => {
-                document.getElementById(id).value = '';
+            ['prod-id', 'prod-name', 'prod-batch', 'prod-expiry', 'prod-price', 'prod-cost', 'prod-stock', 'prod-safestock', 'prod-inward'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
             });
             document.getElementById('prod-type').value = 'OTC';
             document.getElementById('prod-safestock').value = '10';
+            const inEl = document.getElementById('prod-inward');
+            if (inEl) inEl.value = new Date().toISOString().split('T')[0];
             document.getElementById('prod-controlled').checked = false;
             document.getElementById('prod-level-wrap').classList.add('hidden');
 
@@ -4131,6 +4646,7 @@
             const price = parseInt(document.getElementById('prod-price').value) || 0;
             const batch = document.getElementById('prod-batch').value.trim();
             const expiry = document.getElementById('prod-expiry').value;
+            const inwardDate = document.getElementById('prod-inward')?.value || new Date().toISOString().split('T')[0];
             const stock = parseInt(document.getElementById('prod-stock').value) || 0;
             const safeStock = parseInt(document.getElementById('prod-safestock').value) || 10;
             const isControlled = document.getElementById('prod-controlled').checked;
@@ -4162,6 +4678,7 @@
                 cost: cost,
                 batch: batch,
                 expiry: expiry,
+                inwardDate: inwardDate,
                 stock: stock,
                 safeStock: safeStock,
                 isControlled: isControlled,
@@ -4171,10 +4688,10 @@
             if (id) {
                 const idx = window.db.inventory.findIndex(p => p.id === id);
                 if (idx !== -1) window.db.inventory[idx] = item;
-                addAuditLog('庫存管理', `【編輯商品】品名:${name} | 批號:${batch} | 效期:${expiry} | 售價:$${price} | 成本:$${cost} | 庫存:${stock} | 安全量:${safeStock}`);
+                addAuditLog('庫存管理', `【編輯商品】品名:${name} | 批號:${batch} | 進貨日:${inwardDate} | 效期:${expiry} | 售價:$${price} | 成本:$${cost} | 庫存:${stock} | 安全量:${safeStock}`);
             } else {
                 window.db.inventory.push(item);
-                addAuditLog('庫存管理', `【新增商品】品名:${name} | 批號:${batch} | 效期:${expiry} | 售價:$${price} | 成本:$${cost} | 庫存:${stock} | 安全量:${safeStock}`);
+                addAuditLog('庫存管理', `【新增商品】品名:${name} | 批號:${batch} | 進貨日:${inwardDate} | 效期:${expiry} | 售價:$${price} | 成本:$${cost} | 庫存:${stock} | 安全量:${safeStock}`);
             }
 
             saveDB();
@@ -4195,6 +4712,8 @@
             document.getElementById('prod-cost').value = p.cost || 0;
             document.getElementById('prod-batch').value = p.batch;
             document.getElementById('prod-expiry').value = p.expiry;
+            const inEl = document.getElementById('prod-inward');
+            if (inEl) inEl.value = p.inwardDate || (p.createdAt ? p.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]);
             document.getElementById('prod-stock').value = p.stock;
             document.getElementById('prod-safestock').value = p.safeStock;
             document.getElementById('prod-controlled').checked = !!p.isControlled;
@@ -4287,6 +4806,12 @@
             const filtered = allDeposits.filter(d => {
                 if (window.currentDepositFilter === 'active' && d.qty <= 0) return false;
                 if (window.currentDepositFilter === 'completed' && d.qty > 0) return false;
+
+                // 多維時間篩選 (依寄庫時間或提領歷程時間匹配)
+                const timeMatches = matchTimeFilter(d.time, window.depositTimeFilter) ||
+                    (d.withdrawals || []).some(w => matchTimeFilter(w.time, window.depositTimeFilter));
+                if (!timeMatches) return false;
+
                 if (!q) return true;
 
                 const matchWithdrawal = (d.withdrawals || []).some(w =>
@@ -4594,6 +5119,12 @@
 
             const q = (document.getElementById('order-search')?.value || '').toLowerCase().trim();
             const orders = window.db.transactions.filter(t => {
+                // 多維時間篩選 (交易時間、退單時間、或提領時間匹配)
+                const timeMatches = matchTimeFilter(t.time, window.orderTimeFilter) ||
+                    (t.refundTime && matchTimeFilter(t.refundTime, window.orderTimeFilter)) ||
+                    (t.withdrawals || []).some(w => matchTimeFilter(w.time, window.orderTimeFilter));
+                if (!timeMatches) return false;
+
                 if (!q) return true;
                 const hasWithdrawMatch = (t.withdrawals || []).some(w =>
                     w.time.toLowerCase().includes(q) ||
@@ -5664,6 +6195,8 @@
 
             const filteredLogs = allLogs.filter(l => {
                 if (cat !== 'all' && l.category !== cat) return false;
+                // 多維時間篩選 (依年份、週別、自訂日期或快選匹配)
+                if (!matchTimeFilter(l.time, window.auditTimeFilter)) return false;
                 if (!q) return true;
                 return (l.operator && l.operator.toLowerCase().includes(q)) ||
                     (l.category && l.category.toLowerCase().includes(q)) ||
@@ -6775,6 +7308,7 @@
         // ==============================================================
 
         function renderAll() {
+            populateYearSelects();
             renderPOS();
             renderCart();
             renderCustomerCard();
