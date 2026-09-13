@@ -1,0 +1,3137 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>朣朣 智慧藥局管理系統 (企業旗艦版)</title>
+    <!-- Tailwind CSS & FontAwesome -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Paho MQTT 官方跨裝置即時通訊庫 (輕量純前端，支援手機、平板、電腦無縫互聯) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=JetBrains+Mono:wght@500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .tab-content { display: none; }
+        .tab-content.active { display: flex; animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* 玻璃擬態 Glassmorphism */
+        .glass-panel { background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(16px); border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.05); }
+        .toast { transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        
+        /* 自訂捲軸 */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* 5.7cm 發票與熱感明細專屬列印樣式 */
+        @media print {
+            body * { visibility: hidden !important; }
+            #print-area, #print-area * { visibility: visible !important; }
+            #print-area {
+                position: fixed !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 57mm !important;
+                margin: 0 !important;
+                padding: 4mm !important;
+                font-family: 'JetBrains Mono', Courier, monospace !important;
+                font-size: 11px !important;
+                line-height: 1.3 !important;
+                color: #000 !important;
+                background: #fff !important;
+            }
+        }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden text-slate-800 selection:bg-indigo-500 selection:text-white">
+
+    <!-- 1. 系統強制登入畫面 -->
+    <div id="login-screen" class="fixed inset-0 bg-slate-900/95 z-50 flex items-center justify-center backdrop-blur-md">
+        <div class="glass-panel p-10 rounded-3xl w-full max-w-md mx-4 text-center shadow-2xl bg-white border border-slate-200">
+            <div class="bg-gradient-to-tr from-indigo-600 to-violet-500 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-indigo-500/30 text-white text-3xl">
+                <i class="fas fa-prescription-bottle-alt"></i>
+            </div>
+            <h1 class="text-3xl font-black text-slate-800 tracking-tight mb-1">朣朣 智慧藥局</h1>
+            <p class="text-slate-400 font-medium text-xs mb-8">企業旗艦版門市管理與 POS 系統</p>
+            
+            <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4 text-left">
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1.5">登入帳號</label>
+                    <div class="relative">
+                        <i class="fas fa-user absolute left-4 top-3.5 text-slate-400 text-sm"></i>
+                        <input type="text" id="login-username" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-sm" placeholder="請輸入使用者帳號" required value="" autocomplete="off">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-600 mb-1.5">登入密碼</label>
+                    <div class="relative">
+                        <i class="fas fa-lock absolute left-4 top-3.5 text-slate-400 text-sm"></i>
+                        <input type="password" id="login-password" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-sm" placeholder="請輸入密碼" required value="" autocomplete="new-password">
+                    </div>
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-indigo-600/25 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mt-6 text-sm">
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>登入系統</span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. 側邊導覽列 (支援多層級權限) -->
+    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col shadow-2xl relative z-30 hidden md:flex shrink-0" id="sidebar">
+        <div class="p-5 border-b border-slate-800/80">
+            <div class="flex items-center gap-3 mb-3">
+                <div class="bg-indigo-600 p-2.5 rounded-xl text-white shadow-md shadow-indigo-600/30">
+                    <i class="fas fa-pills text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-black text-white tracking-wide">朣朣 智慧藥局</h1>
+                    <p class="text-xs text-indigo-400 font-bold" id="current-user-display">身分載入中...</p>
+                </div>
+            </div>
+            <!-- 跨裝置雲端同步燈號 (點擊可開啟同步設定與連線資訊) -->
+            <div onclick="openModal('modal-sync-settings')" class="cursor-pointer hover:bg-slate-800 transition-colors flex items-center justify-between bg-slate-800/80 px-3 py-2 rounded-xl border border-slate-700/50 group">
+                <span class="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+                    <i class="fas fa-cloud text-xs"></i> 雲端同步
+                </span>
+                <div id="cloud-status-indicator" class="flex items-center gap-1.5 text-[11px] font-bold text-amber-400">
+                    <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+                    <span>連線中...</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 導覽連結 -->
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            <button onclick="switchTab('pos')" id="nav-pos" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all bg-indigo-600 text-white shadow-md font-bold text-sm">
+                <i class="fas fa-cash-register w-5 text-center"></i>
+                <span>門市收銀 (POS)</span>
+            </button>
+            <button onclick="switchTab('inventory')" id="nav-inventory" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-boxes-stacked w-5 text-center"></i>
+                    <span>庫存與預警</span>
+                </div>
+                <span id="nav-badge-inventory" class="hidden bg-rose-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button onclick="switchTab('members')" id="nav-members" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                <i class="fas fa-users w-5 text-center"></i>
+                <span>顧客與慢箋 (CRM)</span>
+            </button>
+            <button onclick="switchTab('deposits')" id="nav-deposits" class="nav-btn w-full flex items-center justify-between px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-box-archive w-5 text-center"></i>
+                    <span>寄存提領 (寄庫)</span>
+                </div>
+                <span id="nav-badge-deposits" class="hidden bg-amber-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">0</span>
+            </button>
+            <button onclick="switchTab('orders')" id="nav-orders" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                <i class="fas fa-receipt w-5 text-center"></i>
+                <span>歷史單據與退單</span>
+            </button>
+            
+            <!-- 管理員專區 -->
+            <div id="nav-group-admin" class="pt-4 mt-2 border-t border-slate-800/80">
+                <div class="px-4 pb-2 text-[10px] font-black text-slate-500 uppercase tracking-wider">管理員專區</div>
+                <button onclick="switchTab('acc')" id="nav-acc" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                    <i class="fas fa-chart-pie w-5 text-center"></i>
+                    <span>財務與 P&L 報表</span>
+                </button>
+                <button onclick="switchTab('users')" id="nav-users" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                    <i class="fas fa-user-shield w-5 text-center"></i>
+                    <span>藥師與權限設定</span>
+                </button>
+                <button onclick="switchTab('audit')" id="nav-audit" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-slate-800 hover:text-white transition-all font-bold text-sm text-slate-400">
+                    <i class="fas fa-shield-halved w-5 text-center"></i>
+                    <span>安全審計軌跡</span>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 登出按鈕 -->
+        <div class="p-4 border-t border-slate-800/80">
+            <button onclick="handleLogout()" class="w-full flex items-center justify-center gap-2 py-3 px-4 bg-slate-800 hover:bg-rose-600 hover:text-white rounded-xl transition-all font-bold text-slate-400 text-xs">
+                <i class="fas fa-arrow-right-from-bracket"></i>
+                <span>登出系統</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- 3. 主內容區 -->
+    <main class="flex-1 flex flex-col relative overflow-hidden bg-slate-100" id="main-content">
+        
+        <!-- 手機版頂部 Header -->
+        <header class="md:hidden bg-slate-900 text-white px-4 py-3 flex justify-between items-center shadow-md">
+            <div class="flex items-center gap-2 font-black"><i class="fas fa-pills text-indigo-400"></i> 朣朣 智慧藥局</div>
+            <div class="flex items-center gap-3">
+                <button onclick="openModal('modal-sync-settings')" class="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                    <i class="fas fa-cloud"></i> 同步
+                </button>
+                <button onclick="document.getElementById('sidebar').classList.toggle('hidden')" class="p-1 text-slate-300 hover:text-white"><i class="fas fa-bars text-lg"></i></button>
+            </div>
+        </header>
+
+        <!-- ============================================================== -->
+        <!-- 模組 1: 門市收銀 (POS) -->
+        <!-- ============================================================== -->
+        <section id="tab-pos" class="tab-content active h-full flex-col md:flex-row overflow-hidden">
+            <!-- 左側：商品目錄與搜尋 -->
+            <div class="flex-1 flex flex-col relative overflow-hidden">
+                <!-- 主動預警橫幅 (90天效期與低庫存) -->
+                <div id="pos-alert-banner" class="hidden bg-rose-600 text-white px-4 py-2.5 flex items-center justify-between shadow-md z-20 shrink-0">
+                    <div class="flex items-center gap-3 font-bold text-xs md:text-sm">
+                        <i class="fas fa-triangle-exclamation text-base animate-pulse"></i>
+                        <span id="pos-alert-text">系統預警：有藥品臨期 (90天內) 或庫存低於安全水位！</span>
+                    </div>
+                    <button onclick="switchTab('inventory'); filterInventory('expiring');" class="bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg text-xs font-bold border border-white/40 transition-colors">
+                        查看清單
+                    </button>
+                </div>
+
+                <!-- 頂部類別過濾鈕 -->
+                <div class="p-4 bg-white border-b border-slate-200 flex flex-wrap justify-between items-center gap-3 shrink-0 shadow-sm">
+                    <h2 class="text-xl font-black text-slate-800 flex items-center gap-2">
+                        <i class="fas fa-barcode text-indigo-600"></i>
+                        <span>門市收銀台</span>
+                    </h2>
+                    <div class="flex gap-2 flex-wrap">
+                        <button onclick="filterPOS('all')" id="filter-all" class="pos-filter-btn px-3.5 py-1.5 bg-slate-900 text-white text-xs font-bold rounded-xl transition-colors shadow-sm">全部商品</button>
+                        <button onclick="filterPOS('OTC')" id="filter-OTC" class="pos-filter-btn px-3.5 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold rounded-xl transition-colors">一般成藥</button>
+                        <button onclick="filterPOS('Rx')" id="filter-Rx" class="pos-filter-btn px-3.5 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold rounded-xl transition-colors">處方藥</button>
+                        <button onclick="filterPOS('Retail')" id="filter-Retail" class="pos-filter-btn px-3.5 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 text-xs font-bold rounded-xl transition-colors">保健/零售</button>
+                    </div>
+                </div>
+
+                <!-- 搜尋與掃碼輸入框 (支援條碼槍連掃 Enter) -->
+                <div class="p-4 pb-2 bg-white/70 border-b border-slate-200/60 shrink-0">
+                    <div class="relative">
+                        <i class="fas fa-magnifying-glass absolute left-4 top-3.5 text-slate-400"></i>
+                        <input type="text" id="pos-search" onkeydown="handlePOSBarcodeScan(event)" onkeyup="renderPOS()" placeholder="條碼槍連掃支援 (Enter) 或搜尋商品名稱、生產批號..." class="w-full pl-11 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-sm text-slate-800" autofocus>
+                    </div>
+                </div>
+
+                <!-- 商品卡片網格 (即時保留庫存) -->
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div id="pos-products" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3.5 pb-16">
+                        <!-- 動態生成商品卡片 (零測資預設空白) -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右側：購物車與結帳台 -->
+            <div class="w-full md:w-[420px] bg-white border-l border-slate-200 flex flex-col shadow-2xl relative shrink-0 z-20">
+                <!-- 會員綁定狀態卡 (支援用藥過敏紅底警示) -->
+                <div class="p-3.5 border-b border-slate-200 bg-slate-50/70 shrink-0">
+                    <div id="pos-customer-card" class="bg-white border border-slate-200 rounded-xl p-3 shadow-sm">
+                        <!-- 動態生成會員狀態 -->
+                    </div>
+                    <!-- 過敏警告橫幅 -->
+                    <div id="pos-allergy-alert" class="hidden mt-2 bg-rose-50 border border-rose-200 p-2.5 rounded-lg flex items-center gap-2 text-rose-700 text-xs font-bold">
+                        <i class="fas fa-triangle-exclamation text-rose-600 text-sm animate-pulse"></i>
+                        <span id="pos-allergy-text">注意：顧客有過敏史！</span>
+                    </div>
+                </div>
+
+                <!-- 購物車商品列表 -->
+                <div class="flex-1 overflow-y-auto p-3.5 space-y-2.5 bg-slate-50/40" id="cart-items">
+                    <!-- 動態生成購物車品項 -->
+                </div>
+
+                <!-- 結帳面板 -->
+                <div class="p-4 border-t border-slate-200 bg-white shadow-[0_-8px_20px_rgba(0,0,0,0.03)] shrink-0 space-y-3">
+                    <!-- 滿額贈提示 -->
+                    <div id="cart-gift-notice" class="hidden text-xs text-emerald-800 font-bold bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center gap-2">
+                        <i class="fas fa-gift text-emerald-600 text-sm"></i>
+                        <span id="cart-gift-text">滿額贈：</span>
+                    </div>
+
+                    <!-- 明細統計 -->
+                    <div class="space-y-1.5 text-xs font-bold text-slate-500">
+                        <div class="flex justify-between items-center">
+                            <span>商品小計</span>
+                            <span id="cart-subtotal" class="text-slate-800 font-mono text-sm">$0</span>
+                        </div>
+                        <div id="cart-discount-row" class="flex justify-between items-center text-rose-600 hidden">
+                            <span>會員全館折扣</span>
+                            <span id="cart-discount-amount" class="font-mono">-$0</span>
+                        </div>
+                        <div id="cart-points-row" class="flex justify-between items-center text-amber-600 hidden">
+                            <span>使用點數折抵</span>
+                            <div class="flex items-center gap-1.5">
+                                <input type="number" id="cart-use-points" min="0" value="0" onchange="handlePointsChange(this.value)" class="w-14 border border-amber-300 bg-amber-50 rounded px-1.5 py-0.5 text-center outline-none text-amber-900 font-bold font-mono">
+                                <span>點 = <span id="cart-points-discount" class="font-mono">-$0</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 總應收金額 -->
+                    <div class="flex justify-between items-baseline pt-2 border-t border-slate-100">
+                        <span class="text-xs font-black text-slate-500 uppercase">總計應收</span>
+                        <span class="text-4xl font-black text-indigo-600 font-mono tracking-tight" id="cart-total">$0</span>
+                    </div>
+
+                    <!-- 收銀按鈕 (純淨現金結帳防誤按，API預留) -->
+                    <button onclick="processCheckout('現金')" class="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl font-black shadow-lg shadow-emerald-600/25 transition-all flex items-center justify-center gap-2 text-sm">
+                        <i class="fas fa-money-bill-wave text-lg"></i>
+                        <span>現金結帳 (找零計算)</span>
+                    </button>
+
+                    <button onclick="clearCart()" class="w-full py-1.5 text-slate-400 hover:text-rose-500 text-xs font-bold transition-colors flex items-center justify-center gap-1">
+                        <i class="fas fa-trash-can"></i>
+                        <span>清空購物車 (退回保留庫存)</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 2: 庫存與效期管控 (FIFO + 90天預警) -->
+        <!-- ============================================================== -->
+        <section id="tab-inventory" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-7xl mx-auto w-full space-y-5">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">庫存與效期管控</h2>
+                        <p class="text-slate-500 text-xs font-medium">主動預警 90 天內臨期藥品與低於安全水位之庫存，支援新增、編輯與刪除。</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="filterInventory('expiring')" class="bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100 px-3.5 py-2 rounded-xl flex items-center gap-1.5 font-bold text-xs shadow-sm transition-colors">
+                            <i class="fas fa-hourglass-half"></i> 90天內到期 <span id="badge-exp" class="bg-rose-500 text-white px-2 py-0.5 rounded-full text-[10px]">0</span>
+                        </button>
+                        <button onclick="filterInventory('lowstock')" class="bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100 px-3.5 py-2 rounded-xl flex items-center gap-1.5 font-bold text-xs shadow-sm transition-colors">
+                            <i class="fas fa-arrow-down-wide-short"></i> 低庫存預警 <span id="badge-low" class="bg-amber-500 text-white px-2 py-0.5 rounded-full text-[10px]">0</span>
+                        </button>
+                        <button onclick="filterInventory('all')" class="bg-slate-200 text-slate-700 hover:bg-slate-300 px-3.5 py-2 rounded-xl font-bold text-xs transition-colors shadow-sm">
+                            全部顯示
+                        </button>
+                        <button onclick="openProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-indigo-600/20 transition-all">
+                            <i class="fas fa-plus"></i> 新增商品/藥品
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                                <tr>
+                                    <th class="p-3.5">品項名稱 (分類)</th>
+                                    <th class="p-3.5">生產批號</th>
+                                    <th class="p-3.5">有效期限 (天數)</th>
+                                    <th class="p-3.5">現有庫存 / 安全水位</th>
+                                    <th class="p-3.5">售價 / 進貨成本</th>
+                                    <th class="p-3.5 text-center">狀態</th>
+                                    <th class="p-3.5 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="inventory-table-body" class="divide-y divide-slate-100 bg-white">
+                                <!-- 動態生成庫存清單 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 3: 顧客與會員管理 (CRM) -->
+        <!-- ============================================================== -->
+        <section id="tab-members" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-6xl mx-auto w-full space-y-5">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">顧客與會員管理 (CRM)</h2>
+                        <p class="text-slate-500 text-xs font-medium">記錄會員聯絡資料、生日、過敏史與消費累積點數。</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openPromoModal()" id="btn-promo-settings" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-amber-500/20 transition-all">
+                            <i class="fas fa-gift"></i> 促銷與點數設定
+                        </button>
+                        <button onclick="openMemberModal(false)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 font-bold text-xs shadow-md shadow-indigo-600/20 transition-all">
+                            <i class="fas fa-user-plus"></i> 新增會員
+                        </button>
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                                <tr>
+                                    <th class="p-3.5">姓名 / 性別</th>
+                                    <th class="p-3.5">手機號碼</th>
+                                    <th class="p-3.5">身分證 / 生日</th>
+                                    <th class="p-3.5 text-rose-600">用藥禁忌與過敏史</th>
+                                    <th class="p-3.5 text-right">可用點數</th>
+                                    <th class="p-3.5 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="members-table-body" class="divide-y divide-slate-100 bg-white">
+                                <!-- 動態生成會員列表 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 4: 寄存與預收提領 (寄庫) -->
+        <!-- ============================================================== -->
+        <section id="tab-deposits" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-6xl mx-auto w-full space-y-5">
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800">寄存與預收提領 (寄庫管理)</h2>
+                    <p class="text-slate-500 text-xs font-medium">門市結帳時購買之奶粉、營養品寄存，提領時自動扣減件數並保留審計紀錄。</p>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                                <tr>
+                                    <th class="p-3.5">購買單號 (時間)</th>
+                                    <th class="p-3.5">顧客姓名 (電話)</th>
+                                    <th class="p-3.5">寄存商品名稱</th>
+                                    <th class="p-3.5 text-center">剩餘件數</th>
+                                    <th class="p-3.5 text-center">提領操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="deposits-table-body" class="divide-y divide-slate-100 bg-white">
+                                <!-- 動態生成寄庫列表 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 5: 歷史單據與 100% 成功退貨退單 -->
+        <!-- ============================================================== -->
+        <section id="tab-orders" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-6xl mx-auto w-full space-y-5">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">歷史單據與退單</h2>
+                        <p class="text-slate-500 text-xs font-medium">可依單號、時間、顧客或商品批號搜尋。退單需輸入密碼授權，並自動歸還庫存與點數。</p>
+                    </div>
+                    <div class="w-full md:w-72 relative">
+                        <i class="fas fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-xs"></i>
+                        <input type="text" id="order-search" onkeyup="renderOrders()" placeholder="搜尋單號、日期、顧客、批號..." class="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-xs text-slate-800">
+                    </div>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                                <tr>
+                                    <th class="p-3.5">交易時間 / 單號</th>
+                                    <th class="p-3.5">收銀藥師 / 顧客</th>
+                                    <th class="p-3.5 text-right">實收金額</th>
+                                    <th class="p-3.5">銷售明細 (商品與批號)</th>
+                                    <th class="p-3.5 text-center">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="orders-table-body" class="divide-y divide-slate-100 bg-white">
+                                <!-- 動態生成訂單紀錄 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 6: 經營財務報表與損益 (P&L) -->
+        <!-- ============================================================== -->
+        <section id="tab-acc" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-7xl mx-auto w-full space-y-6">
+                <div>
+                    <h2 class="text-2xl font-black text-slate-800">經營財務報表與損益 (P&L)</h2>
+                    <p class="text-slate-500 text-xs font-medium">即時彙整營業營收、藥品銷貨成本 (COGS)、行銷折讓與營業費用，計算真實營業淨利。</p>
+                </div>
+
+                <!-- 財務 KPI 卡片 (5大核心指標) -->
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+                    <div class="glass-panel bg-white p-4 rounded-2xl border border-slate-200">
+                        <div class="text-[11px] font-bold text-slate-500 mb-1">原始帳面營收</div>
+                        <div class="text-xl font-black text-slate-800 font-mono" id="acc-gross">$0</div>
+                    </div>
+                    <div class="glass-panel bg-white p-4 rounded-2xl border border-slate-200">
+                        <div class="text-[11px] font-bold text-slate-500 mb-1">銷貨成本 (COGS)</div>
+                        <div class="text-xl font-black text-rose-600 font-mono" id="acc-cogs">-$0</div>
+                    </div>
+                    <div class="glass-panel bg-white p-4 rounded-2xl border border-indigo-200 border-b-4 border-b-indigo-500">
+                        <div class="text-[11px] font-bold text-indigo-700 mb-1">營業毛利</div>
+                        <div class="text-xl font-black text-indigo-600 font-mono" id="acc-margin">$0</div>
+                    </div>
+                    <div class="glass-panel bg-white p-4 rounded-2xl border border-slate-200">
+                        <div class="text-[11px] font-bold text-slate-500 mb-1">日常營業費用</div>
+                        <div class="text-xl font-black text-amber-600 font-mono" id="acc-expenses">-$0</div>
+                    </div>
+                    <div class="glass-panel bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 border-b-4 border-b-emerald-500">
+                        <div class="text-[11px] font-bold text-emerald-800 mb-1">本期營業淨利</div>
+                        <div class="text-2xl font-black text-emerald-600 font-mono tracking-tight" id="acc-net">$0</div>
+                    </div>
+                </div>
+
+                <!-- 財務細項區塊 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    <!-- 左欄：進貨 AP 與營業費用 -->
+                    <div class="space-y-5">
+                        <!-- 進貨與應付帳款 (AP) -->
+                        <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                            <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
+                                    <i class="fas fa-boxes-packing text-indigo-600"></i>
+                                    <span>進貨與應付帳款 (AP)</span>
+                                </h3>
+                                <button onclick="openPOModal()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-bold shadow-sm transition-colors">
+                                    + 新增進貨
+                                </button>
+                            </div>
+                            <table class="w-full text-left text-xs whitespace-nowrap">
+                                <tbody id="acc-po-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+
+                        <!-- 營業費用 (Expenses) -->
+                        <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                            <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
+                                    <i class="fas fa-receipt text-amber-600"></i>
+                                    <span>日常營業費用 (租金/水電/薪資)</span>
+                                </h3>
+                                <button onclick="openExpenseModal()" class="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-lg font-bold shadow-sm transition-colors">
+                                    + 報銷費用
+                                </button>
+                            </div>
+                            <table class="w-full text-left text-xs whitespace-nowrap">
+                                <tbody id="acc-expense-body" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- 右欄：行銷折讓與金流管道 -->
+                    <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+                        <div class="p-3.5 bg-slate-50 border-b border-slate-200">
+                            <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
+                                <i class="fas fa-hand-holding-dollar text-emerald-600"></i>
+                                <span>行銷折讓與金流明細</span>
+                            </h3>
+                        </div>
+                        <div class="p-4 bg-rose-50/50 border-b border-rose-100 flex justify-between items-center">
+                            <span class="text-xs font-bold text-rose-700">會員行銷折讓與點數抵扣 (總計)</span>
+                            <span class="text-xl font-black text-rose-600 font-mono" id="acc-discounts">-$0</span>
+                        </div>
+                        <div class="flex-1 p-4">
+                            <table class="w-full text-left text-xs whitespace-nowrap">
+                                <thead class="border-b border-slate-100 text-slate-500 font-bold">
+                                    <tr>
+                                        <th class="pb-2">收款管道</th>
+                                        <th class="pb-2 text-right">交易筆數</th>
+                                        <th class="pb-2 text-right">實收總額</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="acc-channels-body" class="divide-y divide-slate-100 font-mono"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 7: 藥師與人事權限設定 (RBAC 唯一最高管理員鎖定) -->
+        <!-- ============================================================== -->
+        <section id="tab-users" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-5xl mx-auto w-full space-y-5">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">藥師與人事權限設定</h2>
+                        <p class="text-slate-500 text-xs font-medium">嚴格 RBAC 權限體系。唯一最高管理員鎖定防護，支援帳號密碼修改與藥師刪除。</p>
+                    </div>
+                    <button onclick="openUserModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md shadow-indigo-600/20 transition-all">
+                        <i class="fas fa-user-plus mr-1"></i> 新增員工帳號
+                    </button>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <table class="w-full text-left whitespace-nowrap text-xs md:text-sm">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                            <tr>
+                                <th class="p-3.5">登入帳號</th>
+                                <th class="p-3.5">員工姓名</th>
+                                <th class="p-3.5">職位與權限等級</th>
+                                <th class="p-3.5 text-center">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body" class="divide-y divide-slate-100 bg-white">
+                            <!-- 動態生成使用者清單 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- 模組 8: 安全審計軌跡 (不可竄改日誌) -->
+        <!-- ============================================================== -->
+        <section id="tab-audit" class="tab-content h-full overflow-y-auto p-4 md:p-6">
+            <div class="max-w-5xl mx-auto w-full space-y-5">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h2 class="text-2xl font-black text-slate-800">不可竄改安全審計軌跡</h2>
+                        <p class="text-slate-500 text-xs font-medium">記錄所有門市登入、結帳收銀、作廢退單、庫存更動與管理操作。</p>
+                    </div>
+                    <button id="btn-clear-audit" onclick="clearAuditLogs()" class="bg-rose-50 text-rose-700 hover:bg-rose-100 px-3.5 py-1.5 rounded-xl font-bold text-xs border border-rose-200 shadow-sm transition-colors hidden">
+                        清空紀錄 (僅最高管理員)
+                    </button>
+                </div>
+
+                <div class="glass-panel rounded-2xl overflow-hidden border border-slate-200 bg-white">
+                    <table class="w-full text-left text-xs whitespace-nowrap">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                            <tr>
+                                <th class="p-3.5">時間</th>
+                                <th class="p-3.5">操作人</th>
+                                <th class="p-3.5">類別</th>
+                                <th class="p-3.5">詳細軌跡描述</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-table-body" class="divide-y divide-slate-100 font-mono text-slate-600 bg-white">
+                            <!-- 動態生成日誌 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ============================================================== -->
+    <!-- 彈出對話框 (Modals) -->
+    <!-- ============================================================== -->
+
+    <!-- Toast 提示容器 -->
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[200] flex flex-col gap-2"></div>
+
+    <!-- 0. 跨裝置即時同步設定 Modal -->
+    <div id="modal-sync-settings" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-[160] p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-indigo-50 text-indigo-900 flex justify-between items-center">
+                <h3 class="font-black text-sm flex items-center gap-2"><i class="fas fa-wifi"></i> 跨裝置即時同步設定 (多設備互通)</h3>
+                <button onclick="closeModal('modal-sync-settings')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-4 text-xs">
+                <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 font-bold">雲端 WSS 連線狀態：</span>
+                        <span id="sync-status-detail" class="font-bold text-amber-500">檢測中...</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-slate-500 font-bold">本機裝置專屬代號：</span>
+                        <span id="sync-device-id" class="font-mono font-bold text-indigo-600">載入中...</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">門市同步頻道 ID (所有同門市的設備請維持一致)</label>
+                    <input type="text" id="sync-channel-input" class="w-full p-2.5 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-indigo-500" value="medsync_main_pharmacy">
+                    <p class="text-[10px] text-slate-400 mt-1">※ 手機、iPad、筆電只要輸入相同的頻道 ID，就會透過 HiveMQ 雲端安全加密頻道即時毫秒級互聯！</p>
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 flex gap-2">
+                    <button onclick="applySyncChannel()" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-1.5 shadow-sm">
+                        <i class="fas fa-check"></i> 儲存並重新連線
+                    </button>
+                    <button onclick="requestForceSync()" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-1.5">
+                        <i class="fas fa-rotate"></i> 立即向雲端請求同步
+                    </button>
+                </div>
+
+                <div class="pt-3 border-t border-slate-100">
+                    <button onclick="resetSystemToZero()" class="w-full py-2 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-1">
+                        <i class="fas fa-trash-can"></i> 完全清空重置系統 (回到乾淨零測資狀態)
+                    </button>
+                </div>
+            </div>
+            <div class="p-3 bg-slate-50 border-t flex justify-end">
+                <button onclick="closeModal('modal-sync-settings')" class="px-4 py-1.5 bg-slate-200 font-bold text-xs rounded-xl">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. 共用密碼驗證 / 授權對話框 (完全取代原生 prompt) -->
+    <div id="modal-dialog" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-[150] p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transform transition-all scale-95 opacity-0" id="dialog-content">
+            <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+                <h3 class="font-black text-base text-slate-800" id="dialog-title">安全授權確認</h3>
+            </div>
+            <div class="p-5">
+                <p id="dialog-message" class="text-slate-700 text-xs font-medium mb-3 whitespace-pre-wrap"></p>
+                <input type="password" id="dialog-input" class="hidden w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-center tracking-widest text-sm" placeholder="請輸入登入密碼授權">
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeDialog()" class="px-4 py-2 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button id="dialog-confirm-btn" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors">確認執行</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 現金找零小幫手 Modal -->
+    <div id="modal-checkout-cash" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-[120] p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-emerald-50 flex items-center justify-between text-emerald-800">
+                <h3 class="font-black text-sm flex items-center gap-1.5"><i class="fas fa-calculator"></i> 現金收銀找零小幫手</h3>
+                <button onclick="closeModal('modal-checkout-cash')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-4">
+                <div class="text-center bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                    <div class="text-[11px] font-bold text-slate-500 mb-0.5">總計應收金額</div>
+                    <div class="text-4xl font-black text-indigo-600 font-mono tracking-tight" id="cash-due-amount">$0</div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 mb-1.5">客收現金金額</label>
+                    <input type="number" id="cash-tendered" class="w-full text-3xl p-3 border-2 border-slate-200 rounded-xl outline-none focus:border-emerald-500 text-center font-black font-mono bg-slate-50 text-slate-800 transition-colors">
+                </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="addTendered(100)" class="py-2 bg-slate-100 hover:bg-emerald-100 hover:text-emerald-700 rounded-xl font-bold font-mono text-xs text-slate-700 transition-colors">+$100</button>
+                    <button onclick="addTendered(500)" class="py-2 bg-slate-100 hover:bg-emerald-100 hover:text-emerald-700 rounded-xl font-bold font-mono text-xs text-slate-700 transition-colors">+$500</button>
+                    <button onclick="addTendered(1000)" class="py-2 bg-slate-100 hover:bg-emerald-100 hover:text-emerald-700 rounded-xl font-bold font-mono text-xs text-slate-700 transition-colors">+$1000</button>
+                </div>
+                <div id="cash-change-box" class="hidden text-center p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                    <div class="text-[11px] font-bold text-emerald-800 mb-0.5">應找零錢</div>
+                    <div class="text-3xl font-black text-emerald-600 font-mono" id="cash-change-amount">$0</div>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeModal('modal-checkout-cash')" class="px-4 py-2.5 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button onclick="confirmCashCheckout()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors flex items-center gap-1.5">
+                    <i class="fas fa-check"></i> 完成收銀
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 結帳明細與 5.7cm 發票列印防呆 Modal -->
+    <div id="modal-receipt" class="fixed inset-0 bg-slate-900/80 hidden items-center justify-center z-[130] p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b bg-emerald-600 text-white flex justify-between items-center shrink-0">
+                <h3 class="font-black text-sm flex items-center gap-2">
+                    <i class="fas fa-circle-check text-base"></i> 結帳完成 (銷貨明細)
+                </h3>
+                <button onclick="closeModal('modal-receipt')" class="text-white/80 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 bg-slate-100 overflow-y-auto flex-1 flex justify-center">
+                <!-- 5.7cm 熱感收據紙張外觀 -->
+                <div id="print-area" class="w-[57mm] bg-white p-3 shadow-md border border-slate-200 font-mono text-[11px] text-slate-800 leading-tight">
+                    <!-- 動態生成收據內容 -->
+                </div>
+            </div>
+            <div class="p-4 border-t bg-white flex gap-2 shrink-0">
+                <button onclick="closeModal('modal-receipt')" class="w-1/2 py-2.5 bg-slate-100 hover:bg-slate-200 font-bold text-xs text-slate-600 rounded-xl transition-colors">關閉</button>
+                <button onclick="triggerPrintReceipt()" class="w-1/2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors flex items-center justify-center gap-1.5">
+                    <i class="fas fa-print"></i> 列印 / 複製明細
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. 會員建檔與綁定 Modal (搜尋與建檔獨立) -->
+    <div id="modal-member" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0">
+                <h3 class="font-black text-sm text-slate-800" id="modal-member-title">顧客建檔 / 綁定</h3>
+                <button onclick="closeModal('modal-member')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            
+            <!-- 快速搜尋區塊 (僅在結帳綁定模式顯示) -->
+            <div id="mem-search-container" class="p-4 bg-indigo-50/70 border-b border-indigo-100 shrink-0">
+                <label class="block text-xs font-bold text-indigo-900 mb-1">快速搜尋現有會員 (姓名或電話)</label>
+                <div class="relative">
+                    <i class="fas fa-magnifying-glass absolute left-3 top-2.5 text-indigo-400 text-xs"></i>
+                    <input type="text" id="mem-search-input" onkeyup="searchExistingMembers()" placeholder="輸入姓名或手機號碼搜尋..." class="w-full pl-8 pr-3 py-1.5 bg-white border border-indigo-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 font-bold text-xs">
+                </div>
+                <div id="mem-search-results" class="hidden mt-2 max-h-36 overflow-y-auto bg-white rounded-xl border border-indigo-100 shadow-inner divide-y divide-slate-100"></div>
+            </div>
+
+            <!-- 表單欄位 -->
+            <div class="p-5 overflow-y-auto space-y-3.5 flex-1 text-xs">
+                <input type="hidden" id="mem-id">
+                <input type="hidden" id="mem-is-bind">
+                
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">顧客姓名 *</label>
+                        <input type="text" id="mem-name" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold" placeholder="例如: 陳大明">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">手機號碼 *</label>
+                        <input type="text" id="mem-phone" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold" placeholder="例如: 0912345678">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">身分證字號</label>
+                        <input type="text" id="mem-uid" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono uppercase" placeholder="例如: A123456789">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">出生年月日</label>
+                        <input type="date" id="mem-birthday" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono">
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">生理性別</label>
+                        <select id="mem-gender" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold">
+                            <option value="">未指定</option>
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">聯絡地址</label>
+                        <input type="text" id="mem-address" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" placeholder="例如: 台北市...">
+                    </div>
+                </div>
+
+                <!-- 過敏史防呆警示欄位 -->
+                <div class="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <label class="block font-black text-rose-700 mb-1 flex items-center gap-1.5">
+                        <i class="fas fa-triangle-exclamation"></i>
+                        <span>用藥禁忌與過敏史 (POS 結帳會主動紅底警告)</span>
+                    </label>
+                    <input type="text" id="mem-allergies" class="w-full p-2 bg-white border border-rose-300 rounded-lg outline-none focus:border-rose-500 text-rose-700 font-bold placeholder-rose-300" placeholder="例如: 盤尼西林、阿斯匹靈、磺胺類、蠶豆症...">
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">備註紀錄</label>
+                    <input type="text" id="mem-notes" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" placeholder="例如: 慢性處方箋連續領藥...">
+                </div>
+            </div>
+
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2 shrink-0">
+                <button onclick="closeModal('modal-member')" class="px-4 py-2 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button onclick="saveMember()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors">儲存會員</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 商品建檔/編輯 Modal -->
+    <div id="modal-product" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b bg-slate-50 flex justify-between items-center shrink-0">
+                <h3 class="font-black text-sm text-slate-800" id="modal-product-title">新增商品/藥品</h3>
+                <button onclick="closeModal('modal-product')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto space-y-3.5 flex-1 text-xs">
+                <input type="hidden" id="prod-id">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">品項名稱 *</label>
+                    <input type="text" id="prod-name" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold" placeholder="例如: 普拿疼膜衣錠 500mg (10錠/盒)">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">商品類別 *</label>
+                        <select id="prod-type" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold">
+                            <option value="OTC">一般成藥 (OTC)</option>
+                            <option value="Rx">處方藥 (Rx)</option>
+                            <option value="Retail">保健/零售 (可寄庫)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">門市售價 *</label>
+                        <input type="number" id="prod-price" min="0" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-indigo-600">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">進貨成本 (計算真實毛利) *</label>
+                        <input type="number" id="prod-cost" min="0" class="w-full p-2.5 border border-emerald-200 bg-emerald-50/50 rounded-xl outline-none focus:border-emerald-500 font-bold font-mono text-emerald-700">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">生產批號 / 條碼 *</label>
+                        <input type="text" id="prod-batch" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold" placeholder="例如: LOT-2026A">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">有效期限 (90天預警依據) *</label>
+                        <input type="date" id="prod-expiry" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">目前庫存量 *</label>
+                        <input type="number" id="prod-stock" min="0" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">安全水位 (低於此數字主動預警) *</label>
+                    <input type="number" id="prod-safestock" min="0" value="10" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-amber-600">
+                </div>
+                <div class="border-t border-slate-100 pt-3">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" id="prod-controlled" class="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 border-slate-300" onchange="document.getElementById('prod-level-wrap').classList.toggle('hidden', !this.checked)">
+                        <span class="font-bold text-rose-600">標記為管制藥品 (需實名制登記身分證)</span>
+                    </label>
+                    <div id="prod-level-wrap" class="hidden mt-2">
+                        <label class="block font-bold text-rose-700 mb-1">管制等級 (1-4 級)</label>
+                        <input type="number" id="prod-level" min="1" max="4" value="4" class="w-full p-2 bg-rose-50 border border-rose-200 rounded-xl font-bold font-mono text-rose-800">
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2 shrink-0">
+                <button onclick="closeModal('modal-product')" class="px-4 py-2 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button onclick="saveProduct()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors">儲存商品</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. 促銷與點數規則設定 Modal (Admin 專屬) -->
+    <div id="modal-promo" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-amber-50 text-amber-900 flex justify-between items-center">
+                <h3 class="font-black text-sm flex items-center gap-2"><i class="fas fa-gift"></i> 行銷促銷與點數規則設定</h3>
+                <button onclick="closeModal('modal-promo')" class="text-amber-600 hover:text-amber-800"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">會員全館折扣 (100 為不打折，90 為 9 折)</label>
+                    <div class="relative">
+                        <input type="number" id="promo-discount" min="50" max="100" class="w-full p-2.5 border border-slate-200 rounded-xl font-mono font-bold text-slate-800">
+                        <span class="absolute right-3.5 top-2.5 font-bold text-slate-400">折</span>
+                    </div>
+                </div>
+                <div class="border-t border-slate-100 pt-3">
+                    <label class="block font-bold text-slate-700 mb-1">消費點數累積規則 (滿多少元送 1 點)</label>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-2.5 font-bold text-slate-400">$</span>
+                        <input type="number" id="promo-earn" min="1" class="w-full pl-8 p-2.5 border border-slate-200 rounded-xl font-mono font-bold text-slate-800">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">點數折抵現金規則 (1 點折抵多少元)</label>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-2.5 font-bold text-slate-400">$</span>
+                        <input type="number" id="promo-redeem" min="1" class="w-full pl-8 p-2.5 border border-slate-200 rounded-xl font-mono font-bold text-slate-800">
+                    </div>
+                </div>
+                <div class="border-t border-slate-100 pt-3">
+                    <label class="block font-bold text-emerald-700 mb-1">滿額贈送門檻 (滿多少元自動送贈品)</label>
+                    <div class="relative">
+                        <span class="absolute left-3.5 top-2.5 font-bold text-emerald-500">$</span>
+                        <input type="number" id="promo-gift-threshold" min="0" class="w-full pl-8 p-2.5 border border-emerald-200 bg-emerald-50/40 rounded-xl font-mono font-bold text-emerald-800">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-emerald-700 mb-1">滿額贈品名稱</label>
+                    <input type="text" id="promo-gift-name" class="w-full p-2.5 border border-emerald-200 bg-emerald-50/40 rounded-xl font-bold text-emerald-800" placeholder="例如: 高單位B群隨身體驗包">
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeModal('modal-promo')" class="px-4 py-2 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button onclick="savePromo()" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-md transition-colors">套用促銷規則</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. 員工建立/密碼修改 Modal (唯一最高管理員鎖定) -->
+    <div id="modal-user" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-slate-50 flex justify-between items-center">
+                <h3 class="font-black text-sm text-slate-800" id="modal-user-title">新增/編輯藥師帳號</h3>
+                <button onclick="closeModal('modal-user')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <input type="hidden" id="usr-id">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">登入帳號 (英數字) *</label>
+                    <input type="text" id="usr-username" class="w-full p-2.5 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">員工姓名 *</label>
+                    <input type="text" id="usr-name" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">專屬登入密碼 *</label>
+                    <input type="password" id="usr-pwd" class="w-full p-2.5 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-indigo-500" placeholder="輸入新密碼">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">權限等級 (已鎖定不可新增第二個最高管理員)</label>
+                    <select id="usr-role" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500">
+                        <option value="staff">一般藥師 (僅限 POS/退貨/庫存)</option>
+                        <option value="subadmin">副管理員 (可管藥師，不可看帳務)</option>
+                        <option value="admin" disabled id="usr-role-admin-opt">最高管理員 (系統唯一)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeModal('modal-user')" class="px-4 py-2 text-slate-600 font-bold text-xs hover:bg-slate-200 rounded-xl transition-colors">取消</button>
+                <button onclick="saveUser()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors">儲存帳號</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 8. 費用申報 Modal -->
+    <div id="modal-expense" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-amber-50 text-amber-900 flex justify-between items-center">
+                <h3 class="font-black text-sm">申報日常營業費用</h3>
+                <button onclick="closeModal('modal-expense')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">費用類別</label>
+                    <select id="exp-category" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold">
+                        <option value="店面租金">店面租金</option>
+                        <option value="水電瓦斯">水電瓦斯</option>
+                        <option value="人事薪資">人事薪資</option>
+                        <option value="行銷雜支">行銷雜支</option>
+                        <option value="醫藥耗材">醫藥耗材</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">支出金額 ($)</label>
+                    <input type="number" id="exp-amount" min="1" class="w-full p-2.5 border border-amber-200 bg-amber-50/40 rounded-xl font-mono font-bold text-amber-800">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">單據摘要說明</label>
+                    <input type="text" id="exp-note" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold" placeholder="例如: 9月份電費繳納">
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeModal('modal-expense')" class="px-4 py-2 bg-slate-200 font-bold text-xs rounded-xl">取消</button>
+                <button onclick="saveExpense()" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-md">確認入帳</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 9. 進貨單 AP Modal -->
+    <div id="modal-po" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div class="p-4 border-b bg-indigo-50 text-indigo-900 flex justify-between items-center">
+                <h3 class="font-black text-sm">建立進貨單 (應付帳款)</h3>
+                <button onclick="closeModal('modal-po')"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-5 space-y-3.5 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">藥品/商品供應商</label>
+                    <input type="text" id="po-vendor" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold" placeholder="例如: 裕利醫藥股份有限公司">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">進貨總額 ($)</label>
+                    <input type="number" id="po-amount" min="1" class="w-full p-2.5 border border-indigo-200 bg-indigo-50/40 rounded-xl font-mono font-bold text-indigo-800">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">備註/驗收批號</label>
+                    <input type="text" id="po-note" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold" placeholder="例如: 普拿疼與感冒膠囊批次驗收">
+                </div>
+            </div>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
+                <button onclick="closeModal('modal-po')" class="px-4 py-2 bg-slate-200 font-bold text-xs rounded-xl">取消</button>
+                <button onclick="savePO()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md">建立進貨帳款</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- 核心邏輯腳本 (零測資、真跨裝置即時同步) -->
+    <!-- ============================================================== -->
+    <script>
+        /* 
+        ========================================================================
+        💰 真實金流 API 串接預留區 (目前收銀台使用現金找零，日後申請完成請啟用下方配置)
+        ========================================================================
+        */
+        // const REAL_PAYMENT_API = {
+        //     gatewayUrl: "https://your-backend-server.com/api/checkout",
+        //     merchantId: "請填寫綠界 / LINE Pay 官方核發之特約商店代號",
+        //     isProduction: false,
+        //     onSuccess: function(transactionId) {
+        //         console.log("真實扣款成功，交易序號：" + transactionId);
+        //     }
+        // };
+
+        // 絕對乾淨的初始資料庫範本 (100% 零測資 / Blank Slate)
+        const CLEAN_ZERO_DB = {
+            inventory: [],
+            cart: [],
+            transactions: [],
+            deposits: [],
+            members: [],
+            auditLogs: [],
+            expenses: [],
+            purchases: [],
+            promotions: {
+                memberDiscountRate: 100, // 預設不打折
+                pointEarnThreshold: 100, // 滿100送1點
+                pointRedeemValue: 1, // 1點折1元
+                giftThreshold: 0,
+                giftItemName: ''
+            },
+            users: [
+                { id: 'u_admin', username: 'admin', name: '最高管理員', password: 'admin', role: 'admin' }
+            ]
+        };
+
+        const STORAGE_KEY = 'MEDSYNC_PHARMACY_PURE_V1';
+        const DEFAULT_TOPIC = 'medsync_pharmacy_tw_main_store';
+        const DEVICE_ID = 'dev_' + Math.random().toString(36).substring(2, 9);
+
+        // 全域狀態
+        window.db = JSON.parse(JSON.stringify(CLEAN_ZERO_DB));
+        window.currentUser = null;
+        window.currentCustomer = null;
+        window.currentPosCategory = 'all';
+        window.currentInvFilter = 'all';
+        window.currentUsedPoints = 0;
+        window.pendingCheckoutAmt = 0;
+        window.dialogCallback = null;
+
+        // ==============================================================
+        // 跨分頁 (BroadcastChannel) 與 跨裝置 (Paho MQTT over WSS) 同步引擎
+        // ==============================================================
+        let mqttClient = null;
+        let isSyncingRemotely = false;
+        const syncChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('medsync_local_sync') : null;
+
+        if (syncChannel) {
+            syncChannel.onmessage = (event) => {
+                if (event.data === 'sync') {
+                    loadLocalDB();
+                    renderAll();
+                }
+            };
+        }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === STORAGE_KEY) {
+                loadLocalDB();
+                renderAll();
+            }
+        });
+
+        // 初始化 Paho MQTT 跨裝置雲端同步
+        function initMQTTCloudSync() {
+            if (typeof Paho === 'undefined' || !Paho.MQTT || !Paho.MQTT.Client) {
+                console.warn('Paho MQTT library not ready yet, will retry');
+                setTimeout(initMQTTCloudSync, 1000);
+                return;
+            }
+
+            const currentTopic = localStorage.getItem('MEDSYNC_SYNC_TOPIC') || DEFAULT_TOPIC;
+            const statusIndicator = document.getElementById('cloud-status-indicator');
+            const statusDetail = document.getElementById('sync-status-detail');
+            const devIdDisplay = document.getElementById('sync-device-id');
+            const channelInput = document.getElementById('sync-channel-input');
+
+            if (devIdDisplay) devIdDisplay.innerText = DEVICE_ID;
+            if (channelInput) channelInput.value = currentTopic;
+
+            try {
+                // 連接至 HiveMQ 企業級全球公用 WebSocket 伺服器 (SSL 安全傳輸)
+                mqttClient = new Paho.MQTT.Client('broker.hivemq.com', 8884, '/mqtt', DEVICE_ID);
+
+                mqttClient.onConnectionLost = (responseObject) => {
+                    console.warn('MQTT connection lost:', responseObject.errorMessage);
+                    updateSyncUI('offline', '離線 (3秒後重連)');
+                    setTimeout(initMQTTCloudSync, 3000);
+                };
+
+                mqttClient.onMessageArrived = (message) => {
+                    try {
+                        const payload = JSON.parse(message.payloadString);
+                        if (!payload || payload.sender === DEVICE_ID) return; // 忽略本機自己發出的
+
+                        if (payload.type === 'DB_UPDATE' && payload.db) {
+                            console.log('⚡ 接收到來自其他裝置的即時更新廣播:', payload.sender);
+                            isSyncingRemotely = true;
+                            window.db = payload.db;
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+                            renderAll();
+                            isSyncingRemotely = false;
+                            window.showToast('☁️ 已與其他設備即時同步最新資料！', 'info');
+                        } else if (payload.type === 'SYNC_REQUEST') {
+                            // 其他新設備剛打開，主動將目前本機最新資料回傳給他
+                            if (window.db && (window.db.inventory.length > 0 || window.db.members.length > 0 || window.db.transactions.length > 0)) {
+                                broadcastToCloud({
+                                    type: 'SYNC_RESPONSE',
+                                    target: payload.sender,
+                                    db: window.db
+                                });
+                            }
+                        } else if (payload.type === 'SYNC_RESPONSE' && payload.target === DEVICE_ID && payload.db) {
+                            console.log('⚡ 成功接收到其他在線設備的現有資料庫鏡像！');
+                            isSyncingRemotely = true;
+                            window.db = payload.db;
+                            localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+                            renderAll();
+                            isSyncingRemotely = false;
+                            window.showToast('☁️ 成功自雲端同步門市最新資料庫！', 'success');
+                        }
+                    } catch (e) {
+                        console.error('MQTT message parsing error:', e);
+                    }
+                };
+
+                updateSyncUI('connecting', '雲端連線中...');
+
+                mqttClient.connect({
+                    useSSL: true,
+                    timeout: 8,
+                    keepAliveInterval: 30,
+                    cleanSession: true,
+                    onSuccess: () => {
+                        console.log('🎉 Paho MQTT 已連線至 HiveMQ Broker!');
+                        updateSyncUI('online', '跨裝置即時同步中');
+                        mqttClient.subscribe(currentTopic, { qos: 0 });
+
+                        // 新設備上線時，向所有在線裝置廣播請求同步
+                        broadcastToCloud({
+                            type: 'SYNC_REQUEST',
+                            sender: DEVICE_ID
+                        });
+                    },
+                    onFailure: (err) => {
+                        console.warn('MQTT connect failed, will retry in 5s:', err);
+                        updateSyncUI('offline', '單機模式 (點擊查看)');
+                        setTimeout(initMQTTCloudSync, 5000);
+                    }
+                });
+            } catch (err) {
+                console.error('MQTT init error:', err);
+                updateSyncUI('offline', '單機模式 (點擊查看)');
+            }
+        }
+
+        function broadcastToCloud(payload) {
+            if (!mqttClient || !mqttClient.isConnected()) return;
+            try {
+                const currentTopic = localStorage.getItem('MEDSYNC_SYNC_TOPIC') || DEFAULT_TOPIC;
+                payload.sender = DEVICE_ID;
+                payload.timestamp = Date.now();
+                const msg = new Paho.MQTT.Message(JSON.stringify(payload));
+                msg.destinationName = currentTopic;
+                msg.qos = 0;
+                mqttClient.send(msg);
+            } catch (err) {
+                console.error('MQTT broadcast error:', err);
+            }
+        }
+
+        function updateSyncUI(status, text) {
+            const ind = document.getElementById('cloud-status-indicator');
+            const detail = document.getElementById('sync-status-detail');
+            if (!ind) return;
+
+            if (status === 'online') {
+                ind.className = 'flex items-center gap-1.5 text-[11px] font-bold text-emerald-400';
+                ind.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> <span>${text}</span>`;
+                if (detail) { detail.className = 'font-bold text-emerald-600'; detail.innerText = '已連線 (全球即時同步啟用)'; }
+            } else if (status === 'connecting') {
+                ind.className = 'flex items-center gap-1.5 text-[11px] font-bold text-amber-400';
+                ind.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> <span>${text}</span>`;
+                if (detail) { detail.className = 'font-bold text-amber-600'; detail.innerText = '連線中...'; }
+            } else {
+                ind.className = 'flex items-center gap-1.5 text-[11px] font-bold text-slate-400';
+                ind.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> <span>${text}</span>`;
+                if (detail) { detail.className = 'font-bold text-slate-500'; detail.innerText = '未連線 (目前為本地單機模式)'; }
+            }
+        }
+
+        window.applySyncChannel = function() {
+            const val = document.getElementById('sync-channel-input').value.trim();
+            if (!val) return window.showToast('頻道代碼不得為空', 'error');
+            localStorage.setItem('MEDSYNC_SYNC_TOPIC', val);
+            window.showToast(`門市頻道已設定為：${val}，正在重新連線...`);
+            window.closeModal('modal-sync-settings');
+            if (mqttClient && mqttClient.isConnected()) {
+                try { mqttClient.disconnect(); } catch(e){}
+            }
+            setTimeout(initMQTTCloudSync, 500);
+        };
+
+        window.requestForceSync = function() {
+            if (!mqttClient || !mqttClient.isConnected()) {
+                return window.showToast('目前未連上雲端，無法向其他裝置請求同步', 'error');
+            }
+            broadcastToCloud({ type: 'SYNC_REQUEST', sender: DEVICE_ID });
+            window.showToast('已發送同步請求至雲端頻道！');
+        };
+
+        // 一鍵清空重置系統 (回到乾淨零測資狀態)
+        window.resetSystemToZero = function() {
+            window.showPrompt('請輸入最高管理員密碼 (admin) 確認重置系統：', (pwd) => {
+                if (pwd === 'admin' || (window.currentUser && pwd === window.currentUser.password)) {
+                    localStorage.removeItem(STORAGE_KEY);
+                    localStorage.removeItem('MEDSYNC_DB_V8');
+                    localStorage.removeItem('朣朣_DB_v7');
+                    window.db = JSON.parse(JSON.stringify(CLEAN_ZERO_DB));
+                    saveDB(true);
+                    renderAll();
+                    window.closeModal('modal-sync-settings');
+                    window.showToast('系統已完全清空為乾淨初始狀態！', 'success');
+                } else {
+                    window.showToast('密碼錯誤，操作取消', 'error');
+                }
+            });
+        };
+
+        // 自動清理舊的測試資料 (若有殘留的王小美、普拿疼等假資料一律清除)
+        function purgeOldMockData() {
+            const keys = ['MEDSYNC_DB_V8', '朣朣_DB_v7', STORAGE_KEY];
+            for (const k of keys) {
+                const stored = localStorage.getItem(k);
+                if (stored && (stored.includes('PAN-2026A') || stored.includes('王小美') || stored.includes('金貝比') || stored.includes('大正百保能') || stored.includes('普拿疼'))) {
+                    localStorage.removeItem(k);
+                }
+            }
+        }
+
+        // 資料庫存取
+        function loadLocalDB() {
+            purgeOldMockData();
+            try {
+                const stored = localStorage.getItem(STORAGE_KEY);
+                if (stored) {
+                    window.db = JSON.parse(stored);
+                    if (!window.db.users || window.db.users.length === 0) window.db.users = CLEAN_ZERO_DB.users;
+                    if (!window.db.promotions) window.db.promotions = CLEAN_ZERO_DB.promotions;
+                    if (!window.db.inventory) window.db.inventory = [];
+                    if (!window.db.members) window.db.members = [];
+                    if (!window.db.cart) window.db.cart = [];
+                    if (!window.db.transactions) window.db.transactions = [];
+                    if (!window.db.deposits) window.db.deposits = [];
+                    if (!window.db.expenses) window.db.expenses = [];
+                    if (!window.db.purchases) window.db.purchases = [];
+                    if (!window.db.auditLogs) window.db.auditLogs = [];
+                } else {
+                    window.db = JSON.parse(JSON.stringify(CLEAN_ZERO_DB));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+                }
+            } catch (err) {
+                console.error("Local DB load error:", err);
+                window.db = JSON.parse(JSON.stringify(CLEAN_ZERO_DB));
+            }
+        }
+
+        function saveDB(broadcast = true) {
+            if (isSyncingRemotely) return; // 避免自遠端更新時重複循環廣播
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(window.db));
+                if (broadcast) {
+                    if (syncChannel) syncChannel.postMessage('sync');
+                    broadcastToCloud({
+                        type: 'DB_UPDATE',
+                        db: window.db
+                    });
+                }
+            } catch (err) {
+                console.error("Local DB save error:", err);
+            }
+        }
+
+        const generateId = () => Math.random().toString(36).substring(2, 9);
+
+        // Toast 訊息提示
+        window.showToast = function(msg, type = 'success') {
+            const container = document.getElementById('toast-container');
+            if (!container) return;
+            const toast = document.createElement('div');
+            const bg = type === 'success' ? 'bg-emerald-600' : (type === 'error' ? 'bg-rose-600' : 'bg-slate-800');
+            const icon = type === 'success' ? 'fa-circle-check' : (type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-info');
+            toast.className = `${bg} text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 transform translate-y-8 opacity-0 toast text-xs font-bold z-[250]`;
+            toast.innerHTML = `<i class="fas ${icon} text-base"></i> <span>${msg}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-y-8', 'opacity-0'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        };
+
+        // Modal 操作
+        window.openModal = function(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+        };
+
+        window.closeModal = function(id) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+        };
+
+        // 安全確認 / 密碼驗證彈窗
+        window.showConfirm = function(msg, callback) {
+            openDialog('操作確認', msg, false, callback);
+        };
+
+        window.showPrompt = function(msg, callback) {
+            openDialog('安全密碼授權', msg, true, callback);
+        };
+
+        function openDialog(title, msg, requireInput, callback) {
+            document.getElementById('dialog-title').innerText = title;
+            document.getElementById('dialog-message').innerText = msg;
+            const input = document.getElementById('dialog-input');
+            const box = document.getElementById('dialog-content');
+            if (requireInput) {
+                input.classList.remove('hidden');
+                input.value = '';
+            } else {
+                input.classList.add('hidden');
+            }
+            window.openModal('modal-dialog');
+            setTimeout(() => {
+                box.classList.remove('scale-95', 'opacity-0');
+                if (requireInput) input.focus();
+            }, 20);
+            window.dialogCallback = callback;
+            document.getElementById('dialog-confirm-btn').onclick = () => {
+                const val = input.value;
+                window.closeDialog();
+                if (window.dialogCallback) window.dialogCallback(requireInput ? val : true);
+            };
+        }
+
+        window.closeDialog = function() {
+            const box = document.getElementById('dialog-content');
+            box.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => window.closeModal('modal-dialog'), 150);
+        };
+
+        // 登入處理
+        window.handleLogin = function(e) {
+            e.preventDefault();
+            const un = document.getElementById('login-username').value.trim();
+            const pw = document.getElementById('login-password').value.trim();
+            const user = window.db.users.find(u => u.username === un && u.password === pw);
+            if (user) {
+                window.currentUser = user;
+                document.getElementById('login-screen').classList.add('hidden');
+                
+                const roleBadge = user.role === 'admin' ? '最高管理員' : (user.role === 'subadmin' ? '副管理員' : '一般藥師');
+                document.getElementById('current-user-display').innerText = `${user.name} (${roleBadge})`;
+                
+                // 權限隱藏與開放
+                applyPermissions(user.role);
+                
+                addAuditLog('系統登入', `${user.name} (${user.role}) 成功登入系統`);
+                renderAll();
+                window.showToast(`歡迎回來，${user.name}！`, 'success');
+            } else {
+                window.showToast('帳號或密碼錯誤，請重新輸入', 'error');
+            }
+        };
+
+        // RBAC 權限分配
+        function applyPermissions(role) {
+            const navGroupAdmin = document.getElementById('nav-group-admin');
+            const navAcc = document.getElementById('nav-acc');
+            const navUsers = document.getElementById('nav-users');
+            const navAudit = document.getElementById('nav-audit');
+            const btnPromo = document.getElementById('btn-promo-settings');
+            const btnClearAudit = document.getElementById('btn-clear-audit');
+
+            if (role === 'admin') {
+                navGroupAdmin.classList.remove('hidden');
+                navAcc.classList.remove('hidden');
+                navUsers.classList.remove('hidden');
+                navAudit.classList.remove('hidden');
+                if (btnPromo) btnPromo.classList.remove('hidden');
+                if (btnClearAudit) btnClearAudit.classList.remove('hidden');
+            } else if (role === 'subadmin') {
+                navGroupAdmin.classList.remove('hidden');
+                navAcc.classList.add('hidden');
+                navUsers.classList.remove('hidden');
+                navAudit.classList.remove('hidden');
+                if (btnPromo) btnPromo.classList.add('hidden');
+                if (btnClearAudit) btnClearAudit.classList.add('hidden');
+            } else {
+                navGroupAdmin.classList.add('hidden');
+                if (btnPromo) btnPromo.classList.add('hidden');
+                if (btnClearAudit) btnClearAudit.classList.add('hidden');
+            }
+        }
+
+        // 登出處理 (自動退還保留庫存)
+        window.handleLogout = function() {
+            if (window.db.cart.length > 0) {
+                window.db.cart.forEach(c => {
+                    const inv = window.db.inventory.find(i => i.id === c.id);
+                    if (inv) inv.stock += c.qty;
+                });
+                window.db.cart = [];
+                saveDB();
+            }
+            window.currentUser = null;
+            window.currentCustomer = null;
+            const btnClearAudit = document.getElementById('btn-clear-audit');
+            if (btnClearAudit) btnClearAudit.classList.add('hidden');
+            document.getElementById('login-form').reset();
+            document.getElementById('login-screen').classList.remove('hidden');
+            window.switchTab('pos');
+        };
+
+        // 分頁切換
+        window.switchTab = function(tabId) {
+            if (tabId === 'acc' && (!window.currentUser || window.currentUser.role !== 'admin')) {
+                return window.showToast('權限不足：副管理員與一般藥師無法查看財務報表', 'error');
+            }
+            if ((tabId === 'users' || tabId === 'audit') && window.currentUser && window.currentUser.role === 'staff') {
+                return window.showToast('權限不足：一般藥師無權進入管理專區', 'error');
+            }
+
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('bg-indigo-600', 'text-white', 'shadow-md');
+                el.classList.add('hover:bg-slate-800', 'hover:text-white', 'text-slate-400');
+            });
+            const targetTab = document.getElementById(`tab-${tabId}`);
+            if (targetTab) targetTab.classList.add('active');
+            
+            const activeBtn = document.getElementById(`nav-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('hover:bg-slate-800', 'hover:text-white', 'text-slate-400');
+                activeBtn.classList.add('bg-indigo-600', 'text-white', 'shadow-md');
+            }
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.add('hidden');
+            }
+        };
+
+        // 90天效期判斷輔助
+        function isExpiringWithin90Days(dateStr) {
+            if (!dateStr) return false;
+            const target = new Date(dateStr).getTime();
+            const now = Date.now();
+            const diffDays = (target - now) / (1000 * 60 * 60 * 24);
+            return diffDays <= 90 && diffDays >= -30;
+        }
+
+        // ==============================================================
+        // POS 門市收銀核心 (即時庫存保留 + 條碼槍連掃)
+        // ==============================================================
+
+        // 條碼槍 Enter 鍵監聽
+        window.handlePOSBarcodeScan = function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const code = e.target.value.trim().toLowerCase();
+                if (!code) return;
+
+                const found = window.db.inventory.find(i => 
+                    i.batch.toLowerCase() === code || 
+                    i.name.toLowerCase() === code ||
+                    i.name.toLowerCase().includes(code)
+                );
+
+                if (found) {
+                    addToCart(found.id);
+                    e.target.value = '';
+                } else {
+                    window.showToast(`未找到條碼/品項: ${code}`, 'error');
+                }
+            }
+        };
+
+        function renderPOS() {
+            const container = document.getElementById('pos-products');
+            if (!container) return;
+            container.innerHTML = '';
+            
+            const query = (document.getElementById('pos-search')?.value || '').toLowerCase().trim();
+            const items = window.db.inventory.filter(i => {
+                const matchCat = (window.currentPosCategory === 'all' || i.type === window.currentPosCategory);
+                const matchQuery = !query || i.name.toLowerCase().includes(query) || i.batch.toLowerCase().includes(query);
+                return matchCat && matchQuery;
+            });
+
+            checkPOSAlertBanner();
+
+            if (window.db.inventory.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-20 text-center text-slate-400 font-bold text-sm">
+                        <i class="fas fa-boxes-stacked text-5xl mb-3 text-slate-300"></i>
+                        <p class="text-base text-slate-600 font-black mb-1">目前門市庫存尚無任何商品</p>
+                        <p class="text-xs text-slate-400 mb-4">系統已準備就緒，請點擊下方按鈕或前往【庫存與預警】建立第一筆藥品資料</p>
+                        <button onclick="openProductModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow-md transition-all">
+                            <i class="fas fa-plus mr-1"></i> 立即新增商品
+                        </button>
+                    </div>`;
+                return;
+            }
+
+            items.forEach(item => {
+                const isExp = isExpiringWithin90Days(item.expiry);
+                const isLow = item.stock <= item.safeStock;
+                const border = item.isControlled ? 'border-rose-400 bg-rose-50/20' : (isExp || isLow ? 'border-amber-400 bg-amber-50/20' : 'border-slate-200');
+                
+                const card = document.createElement('div');
+                card.className = `bg-white p-3.5 rounded-2xl border-2 ${border} cursor-pointer hover:-translate-y-0.5 hover:shadow-md transition-all relative flex flex-col h-full shadow-sm group`;
+                card.onclick = () => addToCart(item.id);
+                
+                card.innerHTML = `
+                    ${item.isControlled ? `<span class="absolute -top-2.5 -right-2 bg-rose-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm">管${item.level}</span>` : ''}
+                    <div class="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-1">
+                        <span>${item.type === 'OTC' ? '一般成藥' : (item.type === 'Rx' ? '處方藥' : '保健/零售')}</span>
+                        <span class="font-mono text-[10px] text-slate-400">${item.batch}</span>
+                    </div>
+                    <h3 class="font-bold text-slate-800 text-xs leading-snug mb-3 flex-1">${item.name}</h3>
+                    <div class="flex justify-between items-end border-t border-slate-100 pt-2 mt-auto">
+                        <span class="text-indigo-600 font-black font-mono text-base">$${item.price.toLocaleString()}</span>
+                        <span class="text-[11px] font-bold font-mono ${item.stock <= 0 ? 'text-rose-600 font-black' : (isLow ? 'text-amber-600' : 'text-slate-400')}">
+                            庫存: ${item.stock}
+                        </span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+
+            if (items.length === 0) {
+                container.innerHTML = `<div class="col-span-full py-16 text-center text-slate-400 font-bold text-xs"><i class="fas fa-boxes-stacked text-3xl mb-2 opacity-50"></i><br>找不到符合搜尋條件的藥品/商品</div>`;
+            }
+        }
+
+        function checkPOSAlertBanner() {
+            const banner = document.getElementById('pos-alert-banner');
+            const alertText = document.getElementById('pos-alert-text');
+            if (!banner) return;
+            
+            const expCount = window.db.inventory.filter(i => isExpiringWithin90Days(i.expiry)).length;
+            const lowCount = window.db.inventory.filter(i => i.stock <= i.safeStock).length;
+            
+            if (expCount > 0 || lowCount > 0) {
+                banner.classList.remove('hidden');
+                alertText.innerText = `系統主動預警：目前有 ${expCount} 項藥品 90 天內即將到期、${lowCount} 項低於安全水位！`;
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        window.filterPOS = function(cat) {
+            window.currentPosCategory = cat;
+            document.querySelectorAll('.pos-filter-btn').forEach(btn => {
+                btn.classList.remove('bg-slate-900', 'text-white');
+                btn.classList.add('bg-slate-100', 'text-slate-600');
+            });
+            const activeBtn = document.getElementById('filter-' + cat);
+            if (activeBtn) {
+                activeBtn.classList.remove('bg-slate-100', 'text-slate-600');
+                activeBtn.classList.add('bg-slate-900', 'text-white');
+            }
+            renderPOS();
+        };
+
+        // 即時扣庫存加入購物車
+        window.addToCart = function(prodId) {
+            const p = window.db.inventory.find(i => i.id === prodId);
+            if (!p) return;
+            if (p.stock <= 0) {
+                return window.showToast('該商品目前庫存為 0，無法再加入', 'error');
+            }
+
+            p.stock -= 1;
+
+            const existing = window.db.cart.find(c => c.id === prodId);
+            if (existing) {
+                existing.qty += 1;
+                existing.pickupQty += 1;
+            } else {
+                window.db.cart.push({
+                    id: p.id,
+                    name: p.name,
+                    type: p.type,
+                    price: p.price,
+                    cost: p.cost || 0,
+                    batch: p.batch,
+                    isControlled: p.isControlled,
+                    level: p.level,
+                    qty: 1,
+                    pickupQty: 1,
+                    depositQty: 0
+                });
+            }
+
+            saveDB();
+            renderPOS();
+            renderCart();
+            renderInventoryBadge();
+        };
+
+        // 購物車數量增減 (即時歸還/預扣庫存)
+        window.updateCartQty = function(prodId, delta) {
+            const item = window.db.cart.find(c => c.id === prodId);
+            const p = window.db.inventory.find(i => i.id === prodId);
+            if (!item) return;
+
+            if (delta === -999) {
+                if (p) p.stock += item.qty;
+                window.db.cart = window.db.cart.filter(c => c.id !== prodId);
+            } else if (delta > 0) {
+                if (!p || p.stock <= 0) return window.showToast('庫存已無剩餘件數', 'error');
+                p.stock -= 1;
+                item.qty += 1;
+                item.pickupQty += 1;
+            } else if (delta < 0) {
+                if (p) p.stock += 1;
+                item.qty -= 1;
+                if (item.qty <= 0) {
+                    window.db.cart = window.db.cart.filter(c => c.id !== prodId);
+                } else {
+                    if (item.depositQty > item.qty) item.depositQty = item.qty;
+                    item.pickupQty = item.qty - item.depositQty;
+                }
+            }
+
+            saveDB();
+            renderPOS();
+            renderCart();
+            renderInventoryBadge();
+        };
+
+        // 寄庫數量調整
+        window.updateCartDeposit = function(prodId, val) {
+            const item = window.db.cart.find(c => c.id === prodId);
+            if (!item) return;
+            let dep = parseInt(val) || 0;
+            if (dep < 0) dep = 0;
+            if (dep > item.qty) dep = item.qty;
+            item.depositQty = dep;
+            item.pickupQty = item.qty - dep;
+            saveDB();
+            renderCart();
+        };
+
+        // 清空購物車 (退回所有預扣庫存)
+        window.clearCart = function() {
+            if (window.db.cart.length === 0) return;
+            window.showConfirm('確定要清空購物車嗎？所有預扣庫存將全數歸還。', () => {
+                window.db.cart.forEach(c => {
+                    const p = window.db.inventory.find(i => i.id === c.id);
+                    if (p) p.stock += c.qty;
+                });
+                window.db.cart = [];
+                window.currentUsedPoints = 0;
+                saveDB();
+                renderPOS();
+                renderCart();
+                renderInventoryBadge();
+                window.showToast('購物車已清空，庫存已全數還原', 'info');
+            });
+        };
+
+        window.handlePointsChange = function(val) {
+            window.currentUsedPoints = Math.max(0, parseInt(val) || 0);
+            renderCart();
+        };
+
+        // 渲染購物車介面
+        function renderCart() {
+            const container = document.getElementById('cart-items');
+            if (!container) return;
+
+            if (window.db.cart.length === 0) {
+                container.innerHTML = `
+                    <div class="h-full flex flex-col items-center justify-center text-slate-300 py-10">
+                        <i class="fas fa-basket-shopping text-4xl mb-3 opacity-40"></i>
+                        <p class="font-bold text-xs">購物車尚無商品</p>
+                    </div>`;
+                document.getElementById('cart-subtotal').innerText = '$0';
+                document.getElementById('cart-total').innerText = '$0';
+                document.getElementById('cart-discount-row').classList.add('hidden');
+                document.getElementById('cart-points-row').classList.add('hidden');
+                document.getElementById('cart-gift-notice').classList.add('hidden');
+                return;
+            }
+
+            let subtotal = 0;
+            container.innerHTML = '';
+
+            window.db.cart.forEach(item => {
+                const lineTotal = item.price * item.qty;
+                subtotal += lineTotal;
+
+                const card = document.createElement('div');
+                card.className = 'bg-white p-3 rounded-2xl border border-slate-200 shadow-sm relative group text-xs';
+                card.innerHTML = `
+                    <button onclick="updateCartQty('${item.id}', -999)" class="absolute -top-1.5 -right-1.5 bg-rose-100 text-rose-500 w-6 h-6 rounded-full flex items-center justify-center hover:bg-rose-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100 shadow-sm">
+                        <i class="fas fa-times text-[10px]"></i>
+                    </button>
+                    <div class="flex justify-between items-start mb-2 pr-3">
+                        <div>
+                            <span class="font-bold text-slate-800">${item.name}</span>
+                            <div class="text-[10px] text-slate-400 font-mono">批號: ${item.batch}</div>
+                        </div>
+                        <span class="font-bold font-mono text-indigo-600 text-sm">$${lineTotal.toLocaleString()}</span>
+                    </div>
+                    <div class="flex items-center justify-between bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                        <span class="text-[11px] font-bold text-slate-500">數量</span>
+                        <div class="flex items-center bg-white border border-slate-200 rounded-lg shadow-sm">
+                            <button onclick="updateCartQty('${item.id}', -1)" class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 text-slate-600 rounded-l-lg"><i class="fas fa-minus text-[10px]"></i></button>
+                            <span class="w-7 text-center font-bold font-mono text-xs">${item.qty}</span>
+                            <button onclick="updateCartQty('${item.id}', 1)" class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 text-slate-600 rounded-r-lg"><i class="fas fa-plus text-[10px]"></i></button>
+                        </div>
+                    </div>
+                    ${item.type === 'Retail' ? `
+                    <div class="flex justify-between items-center mt-2 pt-2 border-t border-slate-100 text-[11px]">
+                        <span class="font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">🛍️ 現領: ${item.pickupQty}</span>
+                        <div class="flex items-center gap-1">
+                            <span class="text-amber-600 font-bold">📦 寄庫:</span>
+                            <input type="number" min="0" max="${item.qty}" value="${item.depositQty}" onchange="updateCartDeposit('${item.id}', this.value)" class="w-12 border border-amber-300 bg-amber-50 rounded px-1 text-center font-bold font-mono text-amber-900 outline-none">
+                        </div>
+                    </div>` : ''}
+                `;
+                container.appendChild(card);
+            });
+
+            // 折扣與滿額贈計算
+            let discount = 0;
+            const promo = window.db.promotions || CLEAN_ZERO_DB.promotions;
+            if (window.currentCustomer && promo.memberDiscountRate < 100) {
+                discount = Math.floor(subtotal * ((100 - promo.memberDiscountRate) / 100));
+            }
+            const afterDiscount = subtotal - discount;
+
+            // 滿額贈品提示
+            if (window.currentCustomer && promo.giftThreshold > 0 && afterDiscount >= promo.giftThreshold && promo.giftItemName) {
+                document.getElementById('cart-gift-text').innerText = `滿額贈品已帶入：${promo.giftItemName} x1`;
+                document.getElementById('cart-gift-notice').classList.remove('hidden');
+            } else {
+                document.getElementById('cart-gift-notice').classList.add('hidden');
+            }
+
+            // 點數折抵計算
+            let pointsDiscount = 0;
+            if (window.currentCustomer) {
+                document.getElementById('cart-points-row').classList.remove('hidden');
+                const maxPts = window.currentCustomer.points || 0;
+                const maxCanUse = promo.pointRedeemValue > 0 ? Math.floor(afterDiscount / promo.pointRedeemValue) : 0;
+                if (window.currentUsedPoints > maxPts) window.currentUsedPoints = maxPts;
+                if (window.currentUsedPoints > maxCanUse) window.currentUsedPoints = maxCanUse;
+                
+                document.getElementById('cart-use-points').value = window.currentUsedPoints;
+                document.getElementById('cart-use-points').max = Math.min(maxPts, maxCanUse);
+                pointsDiscount = window.currentUsedPoints * promo.pointRedeemValue;
+            } else {
+                window.currentUsedPoints = 0;
+                document.getElementById('cart-points-row').classList.add('hidden');
+            }
+
+            const finalTotal = afterDiscount - pointsDiscount;
+
+            document.getElementById('cart-subtotal').innerText = `$${subtotal.toLocaleString()}`;
+            if (discount > 0) {
+                document.getElementById('cart-discount-amount').innerText = `-$${discount.toLocaleString()}`;
+                document.getElementById('cart-discount-row').classList.remove('hidden');
+            } else {
+                document.getElementById('cart-discount-row').classList.add('hidden');
+            }
+            document.getElementById('cart-points-discount').innerText = `-$${pointsDiscount.toLocaleString()}`;
+            document.getElementById('cart-total').innerText = `$${finalTotal.toLocaleString()}`;
+        }
+
+        // 結帳發起
+        window.processCheckout = function(method) {
+            if (window.db.cart.length === 0) return window.showToast('購物車為空，無法進行結帳', 'error');
+
+            const hasControlled = window.db.cart.some(i => i.isControlled);
+            if (hasControlled && (!window.currentCustomer || !window.currentCustomer.uid)) {
+                return window.showToast('購物車內含有管制藥品，依法必須綁定填寫身分證之會員方可結帳！', 'error');
+            }
+
+            const sub = window.db.cart.reduce((s, i) => s + (i.price * i.qty), 0);
+            const promo = window.db.promotions || CLEAN_ZERO_DB.promotions;
+            const disc = window.currentCustomer && promo.memberDiscountRate < 100 ? Math.floor(sub * ((100 - promo.memberDiscountRate) / 100)) : 0;
+            const ptsDisc = window.currentUsedPoints * promo.pointRedeemValue;
+            window.pendingCheckoutAmt = sub - disc - ptsDisc;
+
+            document.getElementById('cash-due-amount').innerText = `$${window.pendingCheckoutAmt.toLocaleString()}`;
+            const tenderedInput = document.getElementById('cash-tendered');
+            tenderedInput.value = window.pendingCheckoutAmt;
+            document.getElementById('cash-change-box').classList.add('hidden');
+
+            tenderedInput.onkeyup = function() {
+                const t = parseInt(this.value) || 0;
+                const change = t - window.pendingCheckoutAmt;
+                const changeBox = document.getElementById('cash-change-box');
+                const changeAmt = document.getElementById('cash-change-amount');
+                if (change >= 0) {
+                    changeBox.classList.remove('hidden');
+                    changeAmt.innerText = `$${change.toLocaleString()}`;
+                } else {
+                    changeBox.classList.add('hidden');
+                }
+            };
+
+            window.openModal('modal-checkout-cash');
+            setTimeout(() => tenderedInput.focus(), 50);
+        };
+
+        window.addTendered = function(amt) {
+            const input = document.getElementById('cash-tendered');
+            let val = parseInt(input.value) || 0;
+            if (val === window.pendingCheckoutAmt) val = 0;
+            input.value = val + amt;
+            input.onkeyup();
+        };
+
+        window.confirmCashCheckout = function() {
+            const tendered = parseInt(document.getElementById('cash-tendered').value) || 0;
+            const change = tendered - window.pendingCheckoutAmt;
+            if (change < 0) return window.showToast('客收現金不足以支付總應收金額！', 'error');
+
+            window.closeModal('modal-checkout-cash');
+            finalizeOrder('現金', tendered, change);
+        };
+
+        // 結帳核銷與開立單據
+        function finalizeOrder(method, tendered, change) {
+            const sub = window.db.cart.reduce((s, i) => s + (i.price * i.qty), 0);
+            const promo = window.db.promotions || CLEAN_ZERO_DB.promotions;
+            const disc = window.currentCustomer && promo.memberDiscountRate < 100 ? Math.floor(sub * ((100 - promo.memberDiscountRate) / 100)) : 0;
+            const ptsDisc = window.currentUsedPoints * promo.pointRedeemValue;
+            const finalAmt = sub - disc - ptsDisc;
+
+            const txId = 'TX' + Date.now().toString().slice(-6);
+            let cogs = 0;
+
+            window.db.cart.forEach(c => {
+                cogs += (c.cost || 0) * c.qty;
+                if (c.depositQty > 0) {
+                    window.db.deposits.push({
+                        id: generateId(),
+                        txId: txId,
+                        customerId: window.currentCustomer?.id || null,
+                        customerName: window.currentCustomer?.name || '現場顧客',
+                        customerPhone: window.currentCustomer?.phone || '-',
+                        productName: c.name,
+                        qty: c.depositQty,
+                        time: new Date().toLocaleString()
+                    });
+                }
+            });
+
+            let ptsEarned = 0;
+            if (window.currentCustomer) {
+                ptsEarned = Math.floor(finalAmt / promo.pointEarnThreshold);
+                const mem = window.db.members.find(m => m.id === window.currentCustomer.id);
+                if (mem) {
+                    mem.points = (mem.points || 0) - window.currentUsedPoints + ptsEarned;
+                }
+            }
+
+            const gift = (promo.giftThreshold > 0 && (sub - disc) >= promo.giftThreshold && window.currentCustomer && promo.giftItemName) ? promo.giftItemName : null;
+            const cartClone = JSON.parse(JSON.stringify(window.db.cart));
+
+            const tx = {
+                id: txId,
+                time: new Date().toLocaleString(),
+                amount: finalAmt,
+                originalAmount: sub,
+                cogs: cogs,
+                discount: disc,
+                pointsUsed: window.currentUsedPoints,
+                pointsDiscount: ptsDisc,
+                pointsEarned: ptsEarned,
+                method: method,
+                customerId: window.currentCustomer?.id || null,
+                customerName: window.currentCustomer?.name || '散客 (未綁定)',
+                customerPhone: window.currentCustomer?.phone || '',
+                operator: window.currentUser ? window.currentUser.name : '藥師',
+                itemsSummary: cartClone.map(i => `${i.name} x${i.qty}`).join(', ') + (gift ? ` (+贈品: ${gift})` : ''),
+                cartDetails: cartClone,
+                gift: gift,
+                isRefunded: false
+            };
+
+            window.db.transactions.unshift(tx);
+
+            renderReceipt(tx, tendered, change);
+            window.openModal('modal-receipt');
+
+            addAuditLog('門市收銀', `單號: ${txId}, 實收: $${finalAmt} (${method}), 收銀藥師: ${tx.operator}`);
+
+            window.db.cart = [];
+            window.currentUsedPoints = 0;
+            window.currentCustomer = null;
+
+            saveDB();
+            renderAll();
+        }
+
+        function renderReceipt(tx, tendered, change) {
+            const printArea = document.getElementById('print-area');
+            if (!printArea) return;
+
+            printArea.innerHTML = `
+                <div style="text-align: center; margin-bottom: 8px;">
+                    <h2 style="font-size: 15px; font-weight: 900; margin: 0;">朣朣 智慧藥局</h2>
+                    <p style="font-size: 9px; margin: 2px 0 0 0; color: #555;">門市電子銷貨明細 (收據)</p>
+                </div>
+                <div style="border-bottom: 1px dashed #444; padding-bottom: 4px; margin-bottom: 4px; font-size: 10px;">
+                    <div>單號: <strong>${tx.id}</strong></div>
+                    <div>時間: ${tx.time}</div>
+                    <div>收銀: ${tx.operator}</div>
+                    <div>顧客: ${tx.customerName}</div>
+                </div>
+                <div style="margin-bottom: 6px;">
+                    ${tx.cartDetails.map(c => `
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                            <span>${c.name}</span>
+                            <span style="font-weight: bold;">x${c.qty} $${(c.price * c.qty).toLocaleString()}</span>
+                        </div>
+                        <div style="font-size: 9px; color: #666; margin-left: 4px; margin-bottom: 2px;">
+                            └ 批號: ${c.batch} ${c.depositQty > 0 ? `| 寄庫: ${c.depositQty} 件` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                <div style="border-top: 1px dashed #444; padding-top: 4px; font-size: 10px;">
+                    <div style="display: flex; justify-content: space-between;"><span>小計金額:</span><span>$${tx.originalAmount.toLocaleString()}</span></div>
+                    ${tx.discount > 0 ? `<div style="display: flex; justify-content: space-between; color: #d00;"><span>會員折扣:</span><span>-$${tx.discount.toLocaleString()}</span></div>` : ''}
+                    ${tx.pointsDiscount > 0 ? `<div style="display: flex; justify-content: space-between; color: #d70;"><span>點數折抵 (${tx.pointsUsed}點):</span><span>-$${tx.pointsDiscount.toLocaleString()}</span></div>` : ''}
+                    <div style="display: flex; justify-content: space-between; font-size: 13px; font-weight: 900; border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
+                        <span>應收實付:</span><span>$${tx.amount.toLocaleString()}</span>
+                    </div>
+                    <div style="margin-top: 4px; font-size: 10px;">
+                        <div>付款方式: ${tx.method}</div>
+                        ${tx.method === '現金' ? `<div>客收現金: $${(tendered || tx.amount).toLocaleString()}</div><div>找零金額: $${(change || 0).toLocaleString()}</div>` : ''}
+                    </div>
+                    ${tx.pointsEarned > 0 ? `<div style="margin-top: 2px; font-size: 9px; color: #080;">本次消費累積點數: +${tx.pointsEarned} 點</div>` : ''}
+                </div>
+                ${tx.gift ? `
+                <div style="margin-top: 6px; padding: 4px; border: 1px solid #000; text-align: center; font-weight: bold; font-size: 10px;">
+                    🎁 贈送滿額禮：${tx.gift}
+                </div>` : ''}
+                <div style="text-align: center; margin-top: 8px; font-size: 9px; color: #666;">
+                    感謝您的光臨，請按藥師醫囑正確用藥！
+                </div>
+            `;
+        }
+
+        // 列印雙保險
+        window.triggerPrintReceipt = function() {
+            const contentHTML = document.getElementById('print-area').innerHTML;
+            const contentText = document.getElementById('print-area').innerText.replace(/\n\s*\n/g, '\n');
+
+            let printSucceeded = false;
+            try {
+                const iframe = document.createElement('iframe');
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = 'none';
+                document.body.appendChild(iframe);
+
+                const doc = iframe.contentWindow.document;
+                doc.open();
+                doc.write('<html><head><title>藥局銷貨明細</title>');
+                doc.write('<style>body{font-family:monospace;font-size:11px;width:57mm;margin:0;padding:4mm;color:#000;}</style>');
+                doc.write('</head><body>');
+                doc.write(contentHTML);
+                doc.write('</body></html>');
+                doc.close();
+
+                setTimeout(() => {
+                    try {
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                        printSucceeded = true;
+                        setTimeout(() => document.body.removeChild(iframe), 1000);
+                    } catch (e) {
+                        fallbackClipboard(contentText);
+                        if (iframe.parentNode) document.body.removeChild(iframe);
+                    }
+                }, 300);
+            } catch (err) {
+                fallbackClipboard(contentText);
+            }
+
+            function fallbackClipboard(text) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText("=== 朣朣藥局 銷貨明細 ===\n\n" + text)
+                        .then(() => window.showToast('列印受瀏覽器阻擋，明細已強制複製到剪貼簿！可直接貼上。', 'success'))
+                        .catch(() => execCommandCopy(text));
+                } else {
+                    execCommandCopy(text);
+                }
+            }
+
+            function execCommandCopy(text) {
+                const ta = document.createElement('textarea');
+                ta.value = "=== 朣朣藥局 銷貨明細 ===\n\n" + text;
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    window.showToast('明細已複製到剪貼簿！', 'success');
+                } catch (e) {
+                    window.showToast('無法自動列印與複製，請螢幕截圖保存', 'error');
+                }
+                document.body.removeChild(ta);
+            }
+        };
+
+        // 會員卡片與過敏史提示
+        function renderCustomerCard() {
+            const container = document.getElementById('pos-customer-card');
+            const allergyBanner = document.getElementById('pos-allergy-alert');
+            const allergyText = document.getElementById('pos-allergy-text');
+            if (!container) return;
+
+            if (window.currentCustomer) {
+                container.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                                <i class="fas fa-user-check"></i>
+                            </div>
+                            <div>
+                                <div class="font-black text-xs text-slate-800 flex items-center gap-1.5">
+                                    <span>${window.currentCustomer.name}</span>
+                                    <span class="text-[10px] text-indigo-600 font-mono font-bold bg-indigo-50 px-1.5 py-0.5 rounded">剩餘 ${window.currentCustomer.points || 0} 點</span>
+                                </div>
+                                <div class="text-[10px] text-slate-400 font-mono">${window.currentCustomer.phone}</div>
+                            </div>
+                        </div>
+                        <button onclick="unbindCustomer()" class="text-slate-400 hover:text-rose-600 p-1.5 transition-colors">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>`;
+
+                if (window.currentCustomer.allergies && window.currentCustomer.allergies.trim() !== '') {
+                    allergyBanner.classList.remove('hidden');
+                    allergyText.innerText = `用藥禁忌警示：顧客對【${window.currentCustomer.allergies}】過敏！`;
+                } else {
+                    allergyBanner.classList.add('hidden');
+                }
+            } else {
+                allergyBanner.classList.add('hidden');
+                container.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 text-sm">
+                                <i class="fas fa-user"></i>
+                            </div>
+                            <div>
+                                <div class="font-black text-xs text-slate-700">現場散客 (未綁定)</div>
+                                <div class="text-[10px] text-slate-400">無法累積點數或享受會員折扣</div>
+                            </div>
+                        </div>
+                        <button onclick="openMemberModal(true)" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-xl transition-all shadow-sm">
+                            綁定會員
+                        </button>
+                    </div>`;
+            }
+        }
+
+        window.unbindCustomer = function() {
+            window.currentCustomer = null;
+            window.currentUsedPoints = 0;
+            renderCustomerCard();
+            renderCart();
+            window.showToast('已取消會員綁定', 'info');
+        };
+
+        // ==============================================================
+        // 會員與 CRM 核心
+        // ==============================================================
+
+        function renderMembers() {
+            const tbody = document.getElementById('members-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            window.db.members.forEach(m => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors';
+                const hasAllergy = m.allergies && m.allergies.trim() !== '';
+                tr.innerHTML = `
+                    <td class="p-3.5 font-bold text-slate-800">
+                        ${m.name} <span class="text-slate-400 text-xs font-normal">(${m.gender || '未註明'})</span>
+                    </td>
+                    <td class="p-3.5 font-mono text-slate-600">${m.phone}</td>
+                    <td class="p-3.5 font-mono text-slate-500 text-xs">${m.uid || '-'} / ${m.birthday || '-'}</td>
+                    <td class="p-3.5">
+                        ${hasAllergy ? `<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded-lg text-xs font-bold"><i class="fas fa-triangle-exclamation mr-1"></i>${m.allergies}</span>` : '<span class="text-slate-300">-</span>'}
+                    </td>
+                    <td class="p-3.5 text-right font-mono font-black text-amber-600">${m.points || 0}</td>
+                    <td class="p-3.5 text-center">
+                        <button onclick="editMember('${m.id}')" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg text-xs font-bold mr-1.5 transition-colors">編輯</button>
+                        <button onclick="deleteMember('${m.id}')" class="text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">刪除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (window.db.members.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-users text-3xl mb-2 opacity-40"></i><br>目前尚無顧客資料，請點擊右上角【新增會員】建立</td></tr>`;
+            }
+        }
+
+        window.openMemberModal = function(bindMode = false) {
+            document.getElementById('mem-is-bind').value = bindMode ? '1' : '0';
+            ['mem-id', 'mem-name', 'mem-phone', 'mem-uid', 'mem-birthday', 'mem-gender', 'mem-address', 'mem-allergies', 'mem-notes', 'mem-search-input'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            });
+
+            const searchContainer = document.getElementById('mem-search-container');
+            const searchResults = document.getElementById('mem-search-results');
+            searchResults.classList.add('hidden');
+
+            if (bindMode) {
+                document.getElementById('modal-member-title').innerText = '結帳綁定 / 快速建檔會員';
+                searchContainer.classList.remove('hidden');
+            } else {
+                document.getElementById('modal-member-title').innerText = '新增顧客資料';
+                searchContainer.classList.add('hidden');
+            }
+            window.openModal('modal-member');
+        };
+
+        window.searchExistingMembers = function() {
+            const q = document.getElementById('mem-search-input').value.trim().toLowerCase();
+            const resContainer = document.getElementById('mem-search-results');
+            if (!q) {
+                resContainer.classList.add('hidden');
+                return;
+            }
+
+            const matched = window.db.members.filter(m => m.name.toLowerCase().includes(q) || m.phone.includes(q));
+            if (matched.length > 0) {
+                resContainer.innerHTML = matched.map(m => `
+                    <div onclick="selectBindMember('${m.id}')" class="p-2.5 cursor-pointer hover:bg-indigo-50 flex justify-between items-center transition-colors">
+                        <div>
+                            <span class="font-bold text-slate-800">${m.name}</span>
+                            ${m.allergies ? `<span class="ml-1 text-[10px] text-rose-600 bg-rose-50 px-1 py-0.5 rounded font-bold">過敏: ${m.allergies}</span>` : ''}
+                        </div>
+                        <span class="font-mono text-slate-500 text-xs">${m.phone}</span>
+                    </div>
+                `).join('');
+                resContainer.classList.remove('hidden');
+            } else {
+                resContainer.innerHTML = `<div class="p-3 text-center text-slate-400 text-xs font-bold">查無相符會員，請於下方填寫資料建檔</div>`;
+                resContainer.classList.remove('hidden');
+            }
+        };
+
+        window.selectBindMember = function(id) {
+            const m = window.db.members.find(x => x.id === id);
+            if (m) {
+                window.currentCustomer = m;
+                if (m.allergies && m.allergies.trim() !== '') {
+                    window.showToast(`⚠️ 警告：顧客有過敏史 (${m.allergies})！`, 'error');
+                } else {
+                    window.showToast(`已綁定會員：${m.name}`);
+                }
+                renderCustomerCard();
+                renderCart();
+                window.closeModal('modal-member');
+            }
+        };
+
+        window.saveMember = function() {
+            const id = document.getElementById('mem-id').value;
+            const isBind = document.getElementById('mem-is-bind').value === '1';
+            const name = document.getElementById('mem-name').value.trim();
+            const phone = document.getElementById('mem-phone').value.trim();
+
+            if (!name || !phone) return window.showToast('請務必填寫會員姓名與手機號碼', 'error');
+
+            const memberData = {
+                id: id || generateId(),
+                name: name,
+                phone: phone,
+                uid: document.getElementById('mem-uid').value.trim(),
+                birthday: document.getElementById('mem-birthday').value,
+                gender: document.getElementById('mem-gender').value,
+                address: document.getElementById('mem-address').value.trim(),
+                allergies: document.getElementById('mem-allergies').value.trim(),
+                notes: document.getElementById('mem-notes').value.trim(),
+                points: 0
+            };
+
+            if (id) {
+                const idx = window.db.members.findIndex(m => m.id === id);
+                if (idx !== -1) {
+                    memberData.points = window.db.members[idx].points || 0;
+                    window.db.members[idx] = memberData;
+                }
+                addAuditLog('會員維護', `修改會員資料: ${name} (${phone})`);
+            } else {
+                window.db.members.push(memberData);
+                addAuditLog('會員維護', `新增會員: ${name} (${phone})`);
+            }
+
+            if (isBind) {
+                window.currentCustomer = memberData;
+                if (memberData.allergies) {
+                    window.showToast(`⚠️ 警告：顧客有過敏史 (${memberData.allergies})！`, 'error');
+                }
+                renderCustomerCard();
+                renderCart();
+            }
+
+            saveDB();
+            renderMembers();
+            window.closeModal('modal-member');
+            window.showToast('會員資料已成功儲存！');
+        };
+
+        window.editMember = function(id) {
+            const m = window.db.members.find(x => x.id === id);
+            if (!m) return;
+            document.getElementById('modal-member-title').innerText = '編輯會員資料';
+            document.getElementById('mem-search-container').classList.add('hidden');
+            document.getElementById('mem-is-bind').value = '0';
+            document.getElementById('mem-id').value = m.id;
+            document.getElementById('mem-name').value = m.name;
+            document.getElementById('mem-phone').value = m.phone;
+            document.getElementById('mem-uid').value = m.uid || '';
+            document.getElementById('mem-birthday').value = m.birthday || '';
+            document.getElementById('mem-gender').value = m.gender || '';
+            document.getElementById('mem-address').value = m.address || '';
+            document.getElementById('mem-allergies').value = m.allergies || '';
+            document.getElementById('mem-notes').value = m.notes || '';
+            window.openModal('modal-member');
+        };
+
+        window.deleteMember = function(id) {
+            window.showPrompt('請輸入登入密碼授權刪除該會員：', (pwd) => {
+                if (pwd === window.currentUser.password) {
+                    const m = window.db.members.find(x => x.id === id);
+                    window.db.members = window.db.members.filter(x => x.id !== id);
+                    addAuditLog('會員維護', `刪除會員: ${m?.name || id}`);
+                    saveDB();
+                    renderMembers();
+                    window.showToast('會員已成功刪除');
+                } else {
+                    window.showToast('授權密碼錯誤，操作取消', 'error');
+                }
+            });
+        };
+
+        // 促銷與點數規則設定
+        window.openPromoModal = function() {
+            const promo = window.db.promotions || CLEAN_ZERO_DB.promotions;
+            document.getElementById('promo-discount').value = promo.memberDiscountRate;
+            document.getElementById('promo-earn').value = promo.pointEarnThreshold;
+            document.getElementById('promo-redeem').value = promo.pointRedeemValue;
+            document.getElementById('promo-gift-threshold').value = promo.giftThreshold;
+            document.getElementById('promo-gift-name').value = promo.giftItemName;
+            window.openModal('modal-promo');
+        };
+
+        window.savePromo = function() {
+            window.db.promotions = {
+                memberDiscountRate: parseInt(document.getElementById('promo-discount').value) || 100,
+                pointEarnThreshold: parseInt(document.getElementById('promo-earn').value) || 100,
+                pointRedeemValue: parseInt(document.getElementById('promo-redeem').value) || 1,
+                giftThreshold: parseInt(document.getElementById('promo-gift-threshold').value) || 0,
+                giftItemName: document.getElementById('promo-gift-name').value.trim()
+            };
+            addAuditLog('促銷設定', `更新會員行銷規則: 折扣 ${window.db.promotions.memberDiscountRate}折`);
+            saveDB();
+            renderCart();
+            window.closeModal('modal-promo');
+            window.showToast('行銷與點數規則已更新');
+        };
+
+        // ==============================================================
+        // 庫存與品項管理
+        // ==============================================================
+
+        function renderInventory() {
+            const tbody = document.getElementById('inventory-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            let items = window.db.inventory;
+            if (window.currentInvFilter === 'expiring') {
+                items = items.filter(i => isExpiringWithin90Days(i.expiry));
+            } else if (window.currentInvFilter === 'lowstock') {
+                items = items.filter(i => i.stock <= i.safeStock);
+            }
+
+            renderInventoryBadge();
+
+            items.forEach(p => {
+                const isExp = isExpiringWithin90Days(p.expiry);
+                const isLow = p.stock <= p.safeStock;
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors';
+
+                tr.innerHTML = `
+                    <td class="p-3.5">
+                        <div class="font-bold text-slate-800">${p.name}</div>
+                        <div class="text-[11px] text-slate-400">${p.type === 'OTC' ? '一般成藥' : (p.type === 'Rx' ? '處方藥' : '保健/零售')} ${p.isControlled ? `<span class="text-rose-600 font-bold ml-1">管制藥(級別${p.level})</span>` : ''}</div>
+                    </td>
+                    <td class="p-3.5 font-mono text-slate-600">${p.batch}</td>
+                    <td class="p-3.5 font-mono">
+                        <span class="${isExp ? 'text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-lg' : 'text-slate-600'}">
+                            ${p.expiry} ${isExp ? '⚠️臨期' : ''}
+                        </span>
+                    </td>
+                    <td class="p-3.5 font-mono">
+                        <span class="${isLow ? 'text-amber-600 font-black' : 'text-slate-700 font-bold'}">${p.stock}</span>
+                        <span class="text-slate-400 text-xs">/ ${p.safeStock}</span>
+                    </td>
+                    <td class="p-3.5 font-mono">
+                        <span class="text-indigo-600 font-bold">$${p.price}</span>
+                        <span class="text-slate-400 text-xs">/ 成本:$${p.cost || 0}</span>
+                    </td>
+                    <td class="p-3.5 text-center">
+                        ${p.stock <= 0 ? '<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[11px] font-bold">缺貨</span>' :
+                          (isExp ? '<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[11px] font-bold">90天內過期</span>' :
+                          (isLow ? '<span class="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[11px] font-bold">存量過低</span>' :
+                          '<span class="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[11px] font-bold">正常</span>'))}
+                    </td>
+                    <td class="p-3.5 text-center">
+                        <button onclick="editProduct('${p.id}')" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg text-xs font-bold mr-1.5 transition-colors">編輯</button>
+                        <button onclick="deleteProduct('${p.id}')" class="text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">刪除</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-boxes-stacked text-3xl mb-2 opacity-40"></i><br>目前尚無庫存資料，請點擊右上角【新增商品/藥品】建檔</td></tr>`;
+            }
+        }
+
+        function renderInventoryBadge() {
+            const expCount = window.db.inventory.filter(i => isExpiringWithin90Days(i.expiry)).length;
+            const lowCount = window.db.inventory.filter(i => i.stock <= i.safeStock).length;
+            const totalWarn = expCount + lowCount;
+
+            const badgeExp = document.getElementById('badge-exp');
+            const badgeLow = document.getElementById('badge-low');
+            const navBadge = document.getElementById('nav-badge-inventory');
+
+            if (badgeExp) badgeExp.innerText = expCount;
+            if (badgeLow) badgeLow.innerText = lowCount;
+            if (navBadge) {
+                if (totalWarn > 0) {
+                    navBadge.innerText = totalWarn;
+                    navBadge.classList.remove('hidden');
+                } else {
+                    navBadge.classList.add('hidden');
+                }
+            }
+        }
+
+        window.filterInventory = function(type) {
+            window.currentInvFilter = type;
+            renderInventory();
+        };
+
+        window.openProductModal = function() {
+            document.getElementById('modal-product-title').innerText = '新增商品/藥品';
+            ['prod-id', 'prod-name', 'prod-batch', 'prod-expiry', 'prod-price', 'prod-cost', 'prod-stock', 'prod-safestock'].forEach(id => {
+                document.getElementById(id).value = '';
+            });
+            document.getElementById('prod-type').value = 'OTC';
+            document.getElementById('prod-safestock').value = '10';
+            document.getElementById('prod-controlled').checked = false;
+            document.getElementById('prod-level-wrap').classList.add('hidden');
+            window.openModal('modal-product');
+        };
+
+        window.saveProduct = function() {
+            const id = document.getElementById('prod-id').value;
+            const name = document.getElementById('prod-name').value.trim();
+            const type = document.getElementById('prod-type').value;
+            const price = parseInt(document.getElementById('prod-price').value) || 0;
+            const cost = parseInt(document.getElementById('prod-cost').value) || 0;
+            const batch = document.getElementById('prod-batch').value.trim();
+            const expiry = document.getElementById('prod-expiry').value;
+            const stock = parseInt(document.getElementById('prod-stock').value) || 0;
+            const safeStock = parseInt(document.getElementById('prod-safestock').value) || 10;
+            const isControlled = document.getElementById('prod-controlled').checked;
+            const level = parseInt(document.getElementById('prod-level').value) || 4;
+
+            if (!name || !batch || !expiry) {
+                return window.showToast('請完整填寫品名、批號與有效期限', 'error');
+            }
+
+            const item = {
+                id: id || generateId(),
+                name: name,
+                type: type,
+                price: price,
+                cost: cost,
+                batch: batch,
+                expiry: expiry,
+                stock: stock,
+                safeStock: safeStock,
+                isControlled: isControlled,
+                level: isControlled ? level : 0
+            };
+
+            if (id) {
+                const idx = window.db.inventory.findIndex(p => p.id === id);
+                if (idx !== -1) window.db.inventory[idx] = item;
+                addAuditLog('庫存管理', `編輯商品: ${name} (批號:${batch})`);
+            } else {
+                window.db.inventory.push(item);
+                addAuditLog('庫存管理', `新增商品: ${name} (批號:${batch})`);
+            }
+
+            saveDB();
+            renderInventory();
+            renderPOS();
+            window.closeModal('modal-product');
+            window.showToast('商品資料儲存成功！');
+        };
+
+        window.editProduct = function(id) {
+            const p = window.db.inventory.find(x => x.id === id);
+            if (!p) return;
+            document.getElementById('modal-product-title').innerText = '編輯商品/藥品';
+            document.getElementById('prod-id').value = p.id;
+            document.getElementById('prod-name').value = p.name;
+            document.getElementById('prod-type').value = p.type;
+            document.getElementById('prod-price').value = p.price;
+            document.getElementById('prod-cost').value = p.cost || 0;
+            document.getElementById('prod-batch').value = p.batch;
+            document.getElementById('prod-expiry').value = p.expiry;
+            document.getElementById('prod-stock').value = p.stock;
+            document.getElementById('prod-safestock').value = p.safeStock;
+            document.getElementById('prod-controlled').checked = !!p.isControlled;
+            if (p.isControlled) {
+                document.getElementById('prod-level-wrap').classList.remove('hidden');
+                document.getElementById('prod-level').value = p.level || 4;
+            } else {
+                document.getElementById('prod-level-wrap').classList.add('hidden');
+            }
+            window.openModal('modal-product');
+        };
+
+        window.deleteProduct = function(id) {
+            window.showPrompt('請輸入登入密碼授權刪除此商品：', (pwd) => {
+                if (pwd === window.currentUser.password) {
+                    const p = window.db.inventory.find(x => x.id === id);
+                    window.db.inventory = window.db.inventory.filter(x => x.id !== id);
+                    addAuditLog('庫存管理', `刪除商品: ${p?.name || id}`);
+                    saveDB();
+                    renderInventory();
+                    renderPOS();
+                    window.showToast('商品已成功刪除');
+                } else {
+                    window.showToast('密碼錯誤，刪除操作取消', 'error');
+                }
+            });
+        };
+
+        // ==============================================================
+        // 寄存提領 (寄庫) 核心
+        // ==============================================================
+
+        function renderDeposits() {
+            const tbody = document.getElementById('deposits-table-body');
+            const navBadge = document.getElementById('nav-badge-deposits');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const activeDeposits = window.db.deposits.filter(d => d.qty > 0);
+            if (navBadge) {
+                if (activeDeposits.length > 0) {
+                    navBadge.innerText = activeDeposits.length;
+                    navBadge.classList.remove('hidden');
+                } else {
+                    navBadge.classList.add('hidden');
+                }
+            }
+
+            window.db.deposits.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors';
+                tr.innerHTML = `
+                    <td class="p-3.5 font-mono">
+                        <div class="font-bold text-slate-800">${d.txId}</div>
+                        <div class="text-[10px] text-slate-400">${d.time}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <div class="font-bold text-slate-800">${d.customerName}</div>
+                        <div class="text-slate-400 font-mono text-xs">${d.customerPhone}</div>
+                    </td>
+                    <td class="p-3.5 font-bold text-slate-800">${d.productName}</td>
+                    <td class="p-3.5 text-center font-mono font-black text-base ${d.qty > 0 ? 'text-amber-600' : 'text-slate-300'}">
+                        ${d.qty}
+                    </td>
+                    <td class="p-3.5 text-center">
+                        ${d.qty > 0 ? `
+                        <button onclick="withdrawDeposit('${d.id}')" class="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1 rounded-xl text-xs font-bold shadow-sm transition-colors flex items-center gap-1 mx-auto">
+                            <i class="fas fa-hand-holding-box"></i> 提領 1 件
+                        </button>` : `<span class="text-slate-400 text-xs font-bold">已全數提畢</span>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (window.db.deposits.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-box-archive text-3xl mb-2 opacity-40"></i><br>目前尚無任何寄庫紀錄</td></tr>`;
+            }
+        }
+
+        window.withdrawDeposit = function(id) {
+            const d = window.db.deposits.find(x => x.id === id);
+            if (!d || d.qty <= 0) return;
+
+            window.showConfirm(`確定要為顧客【${d.customerName}】提領 1 件【${d.productName}】嗎？`, () => {
+                d.qty -= 1;
+                addAuditLog('寄庫提領', `顧客 ${d.customerName} 提領 ${d.productName} 1件，剩餘 ${d.qty} 件 (單號:${d.txId})`);
+                saveDB();
+                renderDeposits();
+                window.showToast(`提領成功！剩餘寄庫數量：${d.qty} 件`);
+            });
+        };
+
+        // ==============================================================
+        // 歷史單據與 100% 成功退貨機制
+        // ==============================================================
+
+        function renderOrders() {
+            const tbody = document.getElementById('orders-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const q = (document.getElementById('order-search')?.value || '').toLowerCase().trim();
+            const orders = window.db.transactions.filter(t => {
+                if (!q) return true;
+                return t.id.toLowerCase().includes(q) ||
+                       t.time.toLowerCase().includes(q) ||
+                       t.customerName.toLowerCase().includes(q) ||
+                       t.operator.toLowerCase().includes(q) ||
+                       t.itemsSummary.toLowerCase().includes(q);
+            });
+
+            orders.forEach(t => {
+                const tr = document.createElement('tr');
+                tr.className = `hover:bg-slate-50 transition-colors ${t.isRefunded ? 'bg-rose-50/40 opacity-75' : ''}`;
+                tr.innerHTML = `
+                    <td class="p-3.5 font-mono">
+                        <div class="font-black text-slate-800">${t.id} ${t.isRefunded ? '<span class="text-rose-600 bg-rose-100 text-[10px] px-1.5 py-0.5 rounded font-bold">已作廢退單</span>' : ''}</div>
+                        <div class="text-[10px] text-slate-400">${t.time}</div>
+                    </td>
+                    <td class="p-3.5">
+                        <div class="font-bold text-slate-800">藥師: ${t.operator}</div>
+                        <div class="text-slate-500 text-xs">顧客: ${t.customerName}</div>
+                    </td>
+                    <td class="p-3.5 text-right font-mono font-black text-base ${t.isRefunded ? 'line-through text-slate-400' : 'text-slate-800'}">
+                        $${t.amount.toLocaleString()}
+                        <div class="text-[10px] text-slate-400 font-normal">(${t.method})</div>
+                    </td>
+                    <td class="p-3.5 text-xs text-slate-600 max-w-xs truncate">
+                        ${t.itemsSummary}
+                    </td>
+                    <td class="p-3.5 text-center">
+                        <button onclick="reprintReceipt('${t.id}')" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg text-xs font-bold mr-1.5 transition-colors">補印明細</button>
+                        ${!t.isRefunded ? `
+                        <button onclick="refundOrder('${t.id}')" class="text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">作廢退貨</button>
+                        ` : '<span class="text-slate-400 text-xs font-bold">已沖銷</span>'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (orders.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-receipt text-3xl mb-2 opacity-40"></i><br>目前尚無歷史單據紀錄</td></tr>`;
+            }
+        }
+
+        window.reprintReceipt = function(txId) {
+            const tx = window.db.transactions.find(t => t.id === txId);
+            if (!tx) return;
+            renderReceipt(tx, tx.amount, 0);
+            window.openModal('modal-receipt');
+            addAuditLog('單據補印', `補印單號 ${txId} 之銷貨收據`);
+        };
+
+        // 100% 成功退貨機制
+        window.refundOrder = function(txId) {
+            const tx = window.db.transactions.find(t => t.id === txId);
+            if (!tx || tx.isRefunded) return;
+
+            window.showPrompt(`確定要作廢單號【${txId}】嗎？\n系統將自動：\n1. 加回藥品庫存\n2. 沖銷營業額\n3. 退還/扣除會員點數\n4. 註銷寄庫紀錄\n\n請輸入登入密碼確認授權：`, (pwd) => {
+                if (pwd !== window.currentUser.password) {
+                    return window.showToast('密碼驗證錯誤，退單已取消', 'error');
+                }
+
+                tx.cartDetails.forEach(c => {
+                    const inv = window.db.inventory.find(i => i.id === c.id);
+                    if (inv) inv.stock += c.qty;
+                });
+
+                if (tx.customerId) {
+                    const mem = window.db.members.find(m => m.id === tx.customerId);
+                    if (mem) {
+                        mem.points = (mem.points || 0) + (tx.pointsUsed || 0) - (tx.pointsEarned || 0);
+                        if (mem.points < 0) mem.points = 0;
+                    }
+                }
+
+                window.db.deposits = window.db.deposits.filter(d => d.txId !== txId);
+                tx.isRefunded = true;
+
+                addAuditLog('作廢退貨', `單號 ${txId} 已退貨沖銷，實收金額 $${tx.amount} 退還，操作人: ${window.currentUser.name}`);
+                saveDB();
+                renderAll();
+                window.showToast(`單號 ${txId} 已成功退貨！庫存與點數已全數沖銷`, 'success');
+            });
+        };
+
+        // ==============================================================
+        // 財務與 P&L 損益表 (AP 進貨與營業費用)
+        // ==============================================================
+
+        function renderAccounting() {
+            let gross = 0;
+            let cogs = 0;
+            let discounts = 0;
+            const channelMap = { '現金': { count: 0, sum: 0 } };
+
+            window.db.transactions.filter(t => !t.isRefunded).forEach(t => {
+                gross += t.originalAmount;
+                cogs += (t.cogs || 0);
+                discounts += (t.discount || 0) + (t.pointsDiscount || 0);
+                const m = t.method || '現金';
+                if (!channelMap[m]) channelMap[m] = { count: 0, sum: 0 };
+                channelMap[m].count += 1;
+                channelMap[m].sum += t.amount;
+            });
+
+            const totalExpenses = (window.db.expenses || []).reduce((s, e) => s + (e.amount || 0), 0);
+            const grossProfit = gross - cogs;
+            const netProfit = grossProfit - discounts - totalExpenses;
+
+            document.getElementById('acc-gross').innerText = `$${gross.toLocaleString()}`;
+            document.getElementById('acc-cogs').innerText = `-$${cogs.toLocaleString()}`;
+            document.getElementById('acc-margin').innerText = `$${grossProfit.toLocaleString()}`;
+            document.getElementById('acc-expenses').innerText = `-$${totalExpenses.toLocaleString()}`;
+            document.getElementById('acc-net').innerText = `$${netProfit.toLocaleString()}`;
+            document.getElementById('acc-discounts').innerText = `-$${discounts.toLocaleString()}`;
+
+            const poBody = document.getElementById('acc-po-body');
+            if (poBody) {
+                poBody.innerHTML = (window.db.purchases || []).map(p => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-bold text-slate-800">${p.vendor} <div class="text-[10px] text-slate-400 font-normal">${p.time}</div></td>
+                        <td class="p-3 text-slate-500">${p.note || '-'}</td>
+                        <td class="p-3 text-right font-mono font-bold text-indigo-600">$${p.amount.toLocaleString()}</td>
+                    </tr>
+                `).join('');
+                if (!window.db.purchases || window.db.purchases.length === 0) {
+                    poBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400 font-bold text-xs">目前無進貨帳款</td></tr>`;
+                }
+            }
+
+            const expBody = document.getElementById('acc-expense-body');
+            if (expBody) {
+                expBody.innerHTML = (window.db.expenses || []).map(e => `
+                    <tr class="hover:bg-slate-50">
+                        <td class="p-3 font-bold text-slate-800">${e.category} <div class="text-[10px] text-slate-400 font-normal">${e.time}</div></td>
+                        <td class="p-3 text-slate-500">${e.note || '-'}</td>
+                        <td class="p-3 text-right font-mono font-bold text-amber-600">-$${e.amount.toLocaleString()}</td>
+                    </tr>
+                `).join('');
+                if (!window.db.expenses || window.db.expenses.length === 0) {
+                    expBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400 font-bold text-xs">目前無申報費用</td></tr>`;
+                }
+            }
+
+            const chanBody = document.getElementById('acc-channels-body');
+            if (chanBody) {
+                chanBody.innerHTML = Object.keys(channelMap).map(k => `
+                    <tr>
+                        <td class="py-2.5 font-bold text-slate-700">${k}</td>
+                        <td class="py-2.5 text-right text-slate-500">${channelMap[k].count} 筆</td>
+                        <td class="py-2.5 text-right font-bold text-emerald-600">$${channelMap[k].sum.toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        window.openExpenseModal = function() {
+            document.getElementById('exp-amount').value = '';
+            document.getElementById('exp-note').value = '';
+            window.openModal('modal-expense');
+        };
+
+        window.saveExpense = function() {
+            const cat = document.getElementById('exp-category').value;
+            const amt = parseInt(document.getElementById('exp-amount').value) || 0;
+            const note = document.getElementById('exp-note').value.trim();
+
+            if (amt <= 0) return window.showToast('請輸入有效的支出金額', 'error');
+
+            window.db.expenses.unshift({
+                id: generateId(),
+                category: cat,
+                amount: amt,
+                note: note,
+                time: new Date().toLocaleDateString()
+            });
+
+            addAuditLog('費用申報', `申報營業費用: ${cat} $${amt} (${note})`);
+            saveDB();
+            renderAccounting();
+            window.closeModal('modal-expense');
+            window.showToast('營業費用已入帳！');
+        };
+
+        window.openPOModal = function() {
+            document.getElementById('po-vendor').value = '';
+            document.getElementById('po-amount').value = '';
+            document.getElementById('po-note').value = '';
+            window.openModal('modal-po');
+        };
+
+        window.savePO = function() {
+            const vendor = document.getElementById('po-vendor').value.trim();
+            const amt = parseInt(document.getElementById('po-amount').value) || 0;
+            const note = document.getElementById('po-note').value.trim();
+
+            if (!vendor || amt <= 0) return window.showToast('請填寫供應商與有效進貨金額', 'error');
+
+            window.db.purchases.unshift({
+                id: generateId(),
+                vendor: vendor,
+                amount: amt,
+                note: note,
+                time: new Date().toLocaleDateString(),
+                status: '未核銷'
+            });
+
+            addAuditLog('進貨帳款', `建立進貨單: 供應商 ${vendor} $${amt}`);
+            saveDB();
+            renderAccounting();
+            window.closeModal('modal-po');
+            window.showToast('進貨帳款單據已建立！');
+        };
+
+        // ==============================================================
+        // 藥師與人事權限 (RBAC 唯一最高管理員鎖定)
+        // ==============================================================
+
+        function renderUsers() {
+            const tbody = document.getElementById('users-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            window.db.users.forEach(u => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors';
+                const isRootAdmin = u.id === 'u_admin' || u.role === 'admin';
+                const isSelf = window.currentUser && (u.id === window.currentUser.id);
+                const isCurrentSubadmin = window.currentUser && (window.currentUser.role === 'subadmin');
+
+                // 編輯按鈕權限：副管理員僅可編輯自己或一般藥師 (staff)；不可編輯最高管理員或其他副管理員
+                const canEdit = !isCurrentSubadmin || isSelf || u.role === 'staff';
+
+                // 刪除按鈕權限：
+                // 1. 任何人都絕對不可刪除自己當前登入的帳號 (isSelf)
+                // 2. 最高管理員受系統保護，嚴禁刪除 (isRootAdmin)
+                // 3. 副管理員無權刪除管理職帳號 (admin 或 subadmin)
+                let deleteBtnHtml = '';
+                if (isSelf) {
+                    deleteBtnHtml = '<span class="text-amber-600 bg-amber-50 border border-amber-200 px-2 py-1 rounded-lg text-xs font-bold">登入中 (無法自刪)</span>';
+                } else if (isRootAdmin) {
+                    deleteBtnHtml = '<span class="text-slate-300 text-xs font-bold">系統保留</span>';
+                } else if (isCurrentSubadmin && u.role !== 'staff') {
+                    deleteBtnHtml = '<span class="text-slate-400 text-xs font-bold">無權刪除</span>';
+                } else {
+                    deleteBtnHtml = `<button onclick="deleteUser('${u.id}')" class="text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">刪除</button>`;
+                }
+
+                const editBtnHtml = canEdit 
+                    ? `<button onclick="editUser('${u.id}')" class="text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg text-xs font-bold mr-1.5 transition-colors">修改密碼/權限</button>`
+                    : `<span class="text-slate-400 text-xs font-bold mr-2">無權修改</span>`;
+
+                tr.innerHTML = `
+                    <td class="p-3.5 font-mono font-bold text-slate-800">${u.username}</td>
+                    <td class="p-3.5 font-bold text-slate-800">${u.name}</td>
+                    <td class="p-3.5">
+                        ${u.role === 'admin' ? '<span class="bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded-lg text-xs font-black">👑 最高管理員</span>' :
+                          (u.role === 'subadmin' ? '<span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-lg text-xs font-bold">🛡️ 副管理員</span>' :
+                          '<span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded-lg text-xs font-bold">💊 一般藥師</span>')}
+                    </td>
+                    <td class="p-3.5 text-center">
+                        ${editBtnHtml}
+                        ${deleteBtnHtml}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.openUserModal = function() {
+            document.getElementById('modal-user-title').innerText = '新增藥師/店員帳號';
+            document.getElementById('usr-id').value = '';
+            document.getElementById('usr-username').value = '';
+            document.getElementById('usr-username').disabled = false;
+            document.getElementById('usr-name').value = '';
+            document.getElementById('usr-pwd').value = '';
+            
+            const adminOpt = document.getElementById('usr-role-admin-opt');
+            const subadminOpt = document.querySelector('#usr-role option[value="subadmin"]');
+            const roleSelect = document.getElementById('usr-role');
+
+            if (adminOpt) adminOpt.disabled = true;
+
+            // 副管理員無權建立副管理員，僅最高管理員可新增/升級副管理員
+            if (window.currentUser && window.currentUser.role === 'subadmin') {
+                if (subadminOpt) subadminOpt.disabled = true;
+                roleSelect.value = 'staff';
+                roleSelect.disabled = true;
+            } else {
+                if (subadminOpt) subadminOpt.disabled = false;
+                roleSelect.value = 'staff';
+                roleSelect.disabled = false;
+            }
+
+            window.openModal('modal-user');
+        };
+
+        window.saveUser = function() {
+            const id = document.getElementById('usr-id').value;
+            const username = document.getElementById('usr-username').value.trim();
+            const name = document.getElementById('usr-name').value.trim();
+            const pwd = document.getElementById('usr-pwd').value.trim();
+            let role = document.getElementById('usr-role').value;
+
+            if (!username || !name) return window.showToast('請完整填寫帳號與員工姓名', 'error');
+
+            const isSubadmin = window.currentUser && (window.currentUser.role === 'subadmin');
+
+            if (id) {
+                const user = window.db.users.find(u => u.id === id);
+                if (user) {
+                    const isSelf = window.currentUser && (user.id === window.currentUser.id);
+                    if (isSubadmin && !isSelf && user.role !== 'staff') {
+                        return window.showToast('權限不足：副管理員僅能管理一般藥師！', 'error');
+                    }
+                    if (window.db.users.some(u => u.id !== id && u.username === username)) {
+                        return window.showToast('此登入帳號已被其他使用者使用，請更換！', 'error');
+                    }
+                    if (user.id === 'u_admin' || user.role === 'admin') {
+                        role = 'admin';
+                    } else if (isSubadmin) {
+                        // 副管理員不可擅自變更任何人（包含自己）的角色權限等級
+                        role = user.role;
+                    } else if (role === 'admin') {
+                        return window.showToast('系統限制：只能存在唯一最高管理員，無法升級第二位！', 'error');
+                    }
+
+                    const oldUsername = user.username;
+                    user.username = username;
+                    user.name = name;
+                    if (pwd) user.password = pwd;
+                    user.role = role;
+
+                    // 若修改的是目前登入的帳號，同步更新當前身分狀態與介面
+                    if (isSelf) {
+                        window.currentUser.username = username;
+                        window.currentUser.name = name;
+                        if (pwd) window.currentUser.password = pwd;
+                        const roleBadge = user.role === 'admin' ? '最高管理員' : (user.role === 'subadmin' ? '副管理員' : '一般藥師');
+                        const displayEl = document.getElementById('current-user-display');
+                        if (displayEl) displayEl.innerText = `${user.name} (${roleBadge})`;
+                    }
+
+                    addAuditLog('人事權限', `修改員工帳號: 原【${oldUsername}】變更為【${username}】(${name}) 密碼或權限`);
+                }
+            } else {
+                if (isSubadmin) {
+                    // 副管理員新增帳號一律為一般藥師
+                    role = 'staff';
+                } else if (role === 'admin') {
+                    return window.showToast('系統限制：禁止新增第二個最高管理員！', 'error');
+                }
+                if (!pwd) return window.showToast('新增帳號時必須設定專屬密碼', 'error');
+                if (window.db.users.some(u => u.username === username)) {
+                    return window.showToast('此登入帳號已存在，請使用不同帳號', 'error');
+                }
+
+                window.db.users.push({
+                    id: generateId(),
+                    username: username,
+                    name: name,
+                    password: pwd,
+                    role: role
+                });
+                addAuditLog('人事權限', `新增員工帳號: ${username} (${name}, 角色: ${role})`);
+            }
+
+            saveDB();
+            renderUsers();
+            window.closeModal('modal-user');
+            window.showToast('員工帳號資料已成功儲存！');
+        };
+
+        window.editUser = function(id) {
+            const u = window.db.users.find(x => x.id === id);
+            if (!u) return;
+
+            const isSelf = window.currentUser && (u.id === window.currentUser.id);
+            const isSubadmin = window.currentUser && (window.currentUser.role === 'subadmin');
+
+            // 副管理員不可編輯最高管理員或其他副管理員
+            if (isSubadmin && !isSelf && u.role !== 'staff') {
+                return window.showToast('權限不足：副管理員僅能管理一般藥師帳號！', 'error');
+            }
+
+            document.getElementById('modal-user-title').innerText = `編輯員工：${u.name}`;
+            document.getElementById('usr-id').value = u.id;
+            document.getElementById('usr-username').value = u.username;
+            document.getElementById('usr-username').disabled = false; // 允許更改登入帳號
+            document.getElementById('usr-name').value = u.name;
+            document.getElementById('usr-pwd').value = u.password;
+
+            const adminOpt = document.getElementById('usr-role-admin-opt');
+            const subadminOpt = document.querySelector('#usr-role option[value="subadmin"]');
+            const roleSelect = document.getElementById('usr-role');
+
+            if (u.id === 'u_admin' || u.role === 'admin') {
+                if (adminOpt) adminOpt.disabled = false;
+                roleSelect.value = 'admin';
+                roleSelect.disabled = true;
+            } else if (isSubadmin) {
+                // 副管理員編輯帳號時不可調整權限角色等級
+                if (adminOpt) adminOpt.disabled = true;
+                if (subadminOpt) subadminOpt.disabled = !isSelf;
+                roleSelect.value = u.role;
+                roleSelect.disabled = true;
+            } else {
+                // 最高管理員可升降級副管理員或藥師
+                if (adminOpt) adminOpt.disabled = true;
+                if (subadminOpt) subadminOpt.disabled = false;
+                roleSelect.value = u.role;
+                roleSelect.disabled = false;
+            }
+
+            window.openModal('modal-user');
+        };
+
+        window.deleteUser = function(id) {
+            if (id === 'u_admin') return window.showToast('最高管理員帳號受系統保護，嚴禁刪除！', 'error');
+            if (window.currentUser && id === window.currentUser.id) {
+                return window.showToast('安全限制：無法刪除您當前登入中的帳號！', 'error');
+            }
+
+            const targetUser = window.db.users.find(x => x.id === id);
+            if (!targetUser) return;
+
+            // 副管理員只能刪除一般藥師 (staff)，嚴禁刪除管理職帳號
+            if (window.currentUser && window.currentUser.role === 'subadmin' && targetUser.role !== 'staff') {
+                return window.showToast('權限不足：副管理員僅能移除一般藥師，無權刪除管理職帳號！', 'error');
+            }
+
+            window.showPrompt(`請輸入密碼以授權刪除員工【${targetUser.name}】：`, (pwd) => {
+                if (pwd === window.currentUser.password) {
+                    window.db.users = window.db.users.filter(x => x.id !== id);
+                    addAuditLog('人事權限', `刪除員工帳號: ${targetUser.username} (${targetUser.name})`);
+                    saveDB();
+                    renderUsers();
+                    window.showToast('員工已成功移除');
+                } else {
+                    window.showToast('密碼錯誤，刪除操作取消', 'error');
+                }
+            });
+        };
+
+        // ==============================================================
+        // 審計軌跡日誌
+        // ==============================================================
+
+        function addAuditLog(category, detail) {
+            const log = {
+                time: new Date().toLocaleString(),
+                operator: window.currentUser ? window.currentUser.name : '系統核心',
+                category: category,
+                detail: detail
+            };
+            window.db.auditLogs.unshift(log);
+            if (window.db.auditLogs.length > 500) window.db.auditLogs.pop();
+        }
+
+        function renderAudit() {
+            const tbody = document.getElementById('audit-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            (window.db.auditLogs || []).forEach(l => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition-colors';
+                tr.innerHTML = `
+                    <td class="p-3.5 font-mono text-slate-500">${l.time}</td>
+                    <td class="p-3.5 font-bold text-slate-800">${l.operator}</td>
+                    <td class="p-3.5"><span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-bold text-xs">${l.category}</span></td>
+                    <td class="p-3.5 text-slate-600">${l.detail}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            if (!window.db.auditLogs || window.db.auditLogs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="p-12 text-center text-slate-400 font-bold text-xs"><i class="fas fa-shield-halved text-3xl mb-2 opacity-40"></i><br>目前尚無軌跡紀錄</td></tr>`;
+            }
+        }
+
+        window.clearAuditLogs = function() {
+            if (!window.currentUser || window.currentUser.role !== 'admin') {
+                return window.showToast('權限不足：只有最高管理員才能清空審計日誌！', 'error');
+            }
+
+            window.showPrompt('請輸入最高管理員密碼以確認清空審計日誌：', (pwd) => {
+                if (pwd === window.currentUser.password) {
+                    window.db.auditLogs = [];
+                    addAuditLog('系統日誌', `審計日誌由最高管理員 ${window.currentUser.name} 執行清空`);
+                    saveDB();
+                    renderAudit();
+                    window.showToast('審計日誌已成功清空');
+                } else {
+                    window.showToast('密碼驗證失敗，操作取消', 'error');
+                }
+            });
+        };
+
+        // ==============================================================
+        // 系統全面初始化
+        // ==============================================================
+
+        function renderAll() {
+            renderPOS();
+            renderCart();
+            renderCustomerCard();
+            renderInventory();
+            renderMembers();
+            renderDeposits();
+            renderOrders();
+            renderAccounting();
+            renderUsers();
+            renderAudit();
+        }
+
+        // 1. 載入本地純淨資料庫 (已清除所有測資)
+        loadLocalDB();
+        renderAll();
+
+        // 2. 啟動 Paho MQTT 雲端跨裝置即時通訊引擎
+        initMQTTCloudSync();
+    </script>
+</body>
+</html>
