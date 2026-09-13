@@ -2957,7 +2957,7 @@
                 prescriptions: true,
                 inventory: true,
                 cogs: role === 'admin' || role === 'subadmin',
-                refund: role !== 'staff',
+                refund: true,
                 crm: true,
                 deposits: true,
                 finance: role === 'admin',
@@ -3024,7 +3024,7 @@
                 prescriptions: true,
                 inventory: true,
                 cogs: role === 'admin' || role === 'subadmin',
-                refund: role !== 'staff',
+                refund: true,
                 crm: true,
                 deposits: true,
                 finance: role === 'admin',
@@ -3584,8 +3584,15 @@
                 <div style="border-bottom: 1px dashed #444; padding-bottom: 4px; margin-bottom: 4px; font-size: 10px;">
                     <div>單號: <strong>${tx.id}</strong></div>
                     <div>時間: ${tx.time}</div>
-                    <div>收銀: ${tx.operator}</div>
+                    <div>原收銀: ${tx.operator}</div>
                     <div>顧客: ${tx.customerName}</div>
+                    ${tx.isRefunded ? `
+                        <div style="margin-top: 4px; padding: 4px; background: #fff1f2; border: 1px solid #fecdd3; border-radius: 4px; color: #be123c; font-size: 9px; line-height: 1.3;">
+                            <div style="font-weight: 900;">【此單據已作廢退貨】</div>
+                            <div>核准退貨店員: <b>${tx.refundOperator || '店員'}</b></div>
+                            <div>退款處理時間: ${tx.refundTime || '-'}</div>
+                        </div>
+                    ` : ''}
                 </div>
                 <div style="margin-bottom: 6px;">
                     ${tx.cartDetails.map(c => {
@@ -4597,6 +4604,7 @@
                     t.time.toLowerCase().includes(q) ||
                     t.customerName.toLowerCase().includes(q) ||
                     t.operator.toLowerCase().includes(q) ||
+                    (t.refundOperator && t.refundOperator.toLowerCase().includes(q)) ||
                     t.itemsSummary.toLowerCase().includes(q) ||
                     hasWithdrawMatch;
             });
@@ -4745,12 +4753,22 @@
                         <div class="text-[10px] text-slate-400">${t.time}</div>
                     </td>
                     <td class="p-3.5">
-                        <div class="font-bold text-slate-800">藥師: ${t.operator}</div>
+                        <div class="font-bold text-slate-800">原收銀: ${t.operator}</div>
                         <div class="text-slate-500 text-xs">顧客: ${t.customerName}</div>
+                        ${t.isRefunded ? `
+                            <div class="mt-1.5 inline-flex flex-col bg-rose-50 border border-rose-200 px-2 py-1 rounded-lg text-rose-800 shadow-2xs">
+                                <span class="text-[11px] font-black flex items-center gap-1">
+                                    <i class="fas fa-user-check text-rose-600"></i>
+                                    核准退貨店員：<b class="text-rose-900 underline decoration-rose-400 font-black">${t.refundOperator || '店員'}</b>
+                                </span>
+                                <span class="text-[10px] text-rose-500 font-normal">退單時間: ${t.refundTime || '-'}</span>
+                            </div>
+                        ` : ''}
                     </td>
                     <td class="p-3.5 text-right font-mono font-black text-base ${t.isRefunded ? 'line-through text-slate-400' : 'text-slate-800'}">
                         $${t.amount.toLocaleString()}
                         <div class="text-[10px] text-slate-400 font-normal">(${t.method})</div>
+                        ${t.isRefunded ? '<div class="text-[10px] font-bold text-rose-600 font-sans mt-0.5">已全額退還</div>' : ''}
                     </td>
                     <td class="p-3.5 text-xs text-slate-600 min-w-[240px] max-w-md">
                         <div class="font-medium text-slate-700">${t.itemsSummary}</div>
@@ -4771,7 +4789,11 @@
                             ` : ''}
                             ${!t.isRefunded ? `
                                 <button onclick="refundOrder('${t.id}')" class="text-rose-600 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg text-xs font-bold transition-colors">作廢退貨</button>
-                            ` : '<span class="text-slate-400 text-xs font-bold">已沖銷</span>'}
+                            ` : `
+                                <div class="text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-1 rounded-lg border border-rose-100 text-center">
+                                    <span>由 <b>${t.refundOperator || '店員'}</b> 核退</span>
+                                </div>
+                            `}
                         </div>
                     </td>
                 `;
@@ -4791,22 +4813,29 @@
             addAuditLog('單據補印', `補印單號 ${txId} 之銷貨收據`);
         };
 
-        // 100% 成功退貨機制
+        // 100% 成功退貨機制 (店員輸入自己的密碼即可幫客人退貨，無須原開單同事密碼)
         window.refundOrder = function (txId) {
             const tx = window.db.transactions.find(t => t.id === txId);
             if (!tx || tx.isRefunded) return;
 
-            const canRefund = window.currentUser && (
-                window.currentUser.role === 'admin' ||
-                (window.currentUser.permissions ? window.currentUser.permissions.refund : window.currentUser.role !== 'staff')
-            );
-            if (!canRefund) {
-                return window.showToast('權限不足：您尚未開通退單作廢與退款沖銷權限', 'error');
-            }
+            window.showPrompt(`確定要作廢單號【${txId}】嗎？\n原開單人員：${tx.operator}\n退款金額：$${tx.amount.toLocaleString()}\n\n系統將自動：\n1. 加回藥品庫存\n2. 沖銷營業額\n3. 退還/扣除會員點數\n4. 註銷寄庫紀錄\n\n【店員退貨授權】請輸入您自己的登入密碼即可執行退貨（無須同事密碼）：`, (pwd) => {
+                if (!pwd) return;
 
-            window.showPrompt(`確定要作廢單號【${txId}】嗎？\n系統將自動：\n1. 加回藥品庫存\n2. 沖銷營業額\n3. 退還/扣除會員點數\n4. 註銷寄庫紀錄\n\n請輸入登入密碼確認授權：`, (pwd) => {
-                if (pwd !== window.currentUser.password) {
+                // 優先比對當前登入者密碼；亦支援當前經手店員輸入自己本人的密碼授權
+                let authUser = null;
+                if (window.currentUser && pwd === window.currentUser.password) {
+                    authUser = window.currentUser;
+                } else {
+                    authUser = (window.db.users || []).find(u => u.password === pwd);
+                }
+
+                if (!authUser) {
                     return window.showToast('密碼驗證錯誤，退單已取消', 'error');
+                }
+
+                // 檢查是否被個別關閉退貨權限
+                if (authUser.permissions && authUser.permissions.refund === false) {
+                    return window.showToast(`人員【${authUser.name}】尚未開通作廢退貨權限`, 'error');
                 }
 
                 tx.cartDetails.forEach(c => {
@@ -4824,11 +4853,14 @@
 
                 window.db.deposits = window.db.deposits.filter(d => d.txId !== txId);
                 tx.isRefunded = true;
+                tx.refundOperator = authUser.name;
+                tx.refundTime = new Date().toLocaleString();
 
-                addAuditLog('作廢退貨', `單號 ${txId} 已退貨沖銷，實收金額 $${tx.amount} 退還，操作人: ${window.currentUser.name}`);
+                const roleTitle = authUser.role === 'admin' ? '最高管理員' : (authUser.role === 'subadmin' ? '副管理員' : '店員/藥師');
+                addAuditLog('門市收銀', `【作廢退貨】單號 ${txId} 已退貨沖銷，實收金額 $${tx.amount} 退還。原開單人: ${tx.operator}，本次退貨授權店員: ${authUser.name} (${roleTitle})`);
                 saveDB();
                 renderAll();
-                window.showToast(`單號 ${txId} 已成功退貨！庫存與點數已全數沖銷`, 'success');
+                window.showToast(`單號 ${txId} 已成功退貨！由店員【${authUser.name}】授權沖銷`, 'success');
             });
         };
 
@@ -5182,7 +5214,7 @@
             if (permCrm) permCrm.checked = true;
             if (permDep) permDep.checked = true;
 
-            if (permRefund) permRefund.checked = isAll || isSub;
+            if (permRefund) permRefund.checked = true;
             if (permCogs) permCogs.checked = isAll || isSub;
             if (permFin) permFin.checked = isAll;
             if (permUsr) permUsr.checked = isAll || isSub;
@@ -5237,7 +5269,7 @@
                     prescriptions: true,
                     inventory: true,
                     cogs: u.role === 'admin' || u.role === 'subadmin',
-                    refund: u.role === 'admin' || u.role === 'subadmin',
+                    refund: true,
                     crm: true,
                     deposits: true,
                     finance: u.role === 'admin',
@@ -5448,7 +5480,7 @@
                 prescriptions: true,
                 inventory: true,
                 cogs: u.role === 'admin' || u.role === 'subadmin',
-                refund: u.role === 'admin' || u.role === 'subadmin',
+                refund: true,
                 crm: true,
                 deposits: true,
                 finance: u.role === 'admin',
