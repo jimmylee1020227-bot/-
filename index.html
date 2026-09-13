@@ -482,25 +482,42 @@
                 </div>
 
                 <!-- 財務細項區塊 -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <!-- 左欄：進貨 AP 與營業費用 -->
-                    <div class="space-y-5">
-                        <!-- 進貨與應付帳款 (AP) -->
-                        <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                            <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                                <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
+                <div class="space-y-6">
+                    <!-- 進貨與應付帳款 (AP) - 藥品/供應商/進貨價/建議售價全面分開獨立 -->
+                    <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+                        <div class="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                            <div>
+                                <h3 class="font-black text-sm text-slate-800 flex items-center gap-2">
                                     <i class="fas fa-boxes-packing text-indigo-600"></i>
-                                    <span>進貨與應付帳款 (AP)</span>
+                                    <span>進貨與應付帳款明細 (AP)</span>
                                 </h3>
-                                <button onclick="openPOModal()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded-lg font-bold shadow-sm transition-colors">
-                                    + 新增進貨
-                                </button>
+                                <p class="text-[11px] text-slate-400 font-medium mt-0.5">詳列藥品品項、進貨廠商、進貨成本單價、建議門市售價與應付金額。</p>
                             </div>
+                            <button onclick="openPOModal()" class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl font-bold shadow-sm transition-colors flex items-center gap-1.5 self-start sm:self-auto">
+                                <i class="fas fa-plus"></i>
+                                <span>新增進貨單</span>
+                            </button>
+                        </div>
+                        <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs whitespace-nowrap">
+                                <thead class="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold">
+                                    <tr>
+                                        <th class="p-3.5">進貨時間</th>
+                                        <th class="p-3.5">藥品/品項名稱</th>
+                                        <th class="p-3.5">供應商</th>
+                                        <th class="p-3.5 text-right">進貨價</th>
+                                        <th class="p-3.5 text-right">建議售價</th>
+                                        <th class="p-3.5 text-right">進貨數量</th>
+                                        <th class="p-3.5 text-right">進貨總額</th>
+                                        <th class="p-3.5">備註/批號</th>
+                                    </tr>
+                                </thead>
                                 <tbody id="acc-po-body" class="divide-y divide-slate-100"></tbody>
                             </table>
                         </div>
+                    </div>
 
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <!-- 營業費用 (Expenses) -->
                         <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
                             <div class="p-3.5 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
@@ -516,31 +533,31 @@
                                 <tbody id="acc-expense-body" class="divide-y divide-slate-100"></tbody>
                             </table>
                         </div>
-                    </div>
 
-                    <!-- 右欄：行銷折讓與金流管道 -->
-                    <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
-                        <div class="p-3.5 bg-slate-50 border-b border-slate-200">
-                            <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
-                                <i class="fas fa-hand-holding-dollar text-emerald-600"></i>
-                                <span>行銷折讓與金流明細</span>
-                            </h3>
-                        </div>
-                        <div class="p-4 bg-rose-50/50 border-b border-rose-100 flex justify-between items-center">
-                            <span class="text-xs font-bold text-rose-700">會員行銷折讓與點數抵扣 (總計)</span>
-                            <span class="text-xl font-black text-rose-600 font-mono" id="acc-discounts">-$0</span>
-                        </div>
-                        <div class="flex-1 p-4">
-                            <table class="w-full text-left text-xs whitespace-nowrap">
-                                <thead class="border-b border-slate-100 text-slate-500 font-bold">
-                                    <tr>
-                                        <th class="pb-2">收款管道</th>
-                                        <th class="pb-2 text-right">交易筆數</th>
-                                        <th class="pb-2 text-right">實收總額</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="acc-channels-body" class="divide-y divide-slate-100 font-mono"></tbody>
-                            </table>
+                        <!-- 右欄：行銷折讓與金流管道 -->
+                        <div class="glass-panel bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+                            <div class="p-3.5 bg-slate-50 border-b border-slate-200">
+                                <h3 class="font-black text-xs md:text-sm text-slate-800 flex items-center gap-2">
+                                    <i class="fas fa-hand-holding-dollar text-emerald-600"></i>
+                                    <span>行銷折讓與金流明細</span>
+                                </h3>
+                            </div>
+                            <div class="p-4 bg-rose-50/50 border-b border-rose-100 flex justify-between items-center">
+                                <span class="text-xs font-bold text-rose-700">會員行銷折讓與點數抵扣 (總計)</span>
+                                <span class="text-xl font-black text-rose-600 font-mono" id="acc-discounts">-$0</span>
+                            </div>
+                            <div class="flex-1 p-4">
+                                <table class="w-full text-left text-xs whitespace-nowrap">
+                                    <thead class="border-b border-slate-100 text-slate-500 font-bold">
+                                        <tr>
+                                            <th class="pb-2">收款管道</th>
+                                            <th class="pb-2 text-right">交易筆數</th>
+                                            <th class="pb-2 text-right">實收總額</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="acc-channels-body" class="divide-y divide-slate-100 font-mono"></tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -852,12 +869,12 @@
                         <input type="number" id="prod-price" min="0" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-bold font-mono text-indigo-600">
                     </div>
                 </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">進貨成本 (計算真實毛利) *</label>
-                        <input type="number" id="prod-cost" min="0" class="w-full p-2.5 border border-emerald-200 bg-emerald-50/50 rounded-xl outline-none focus:border-emerald-500 font-bold font-mono text-emerald-700">
+                <div class="grid grid-cols-2 gap-3" id="prod-cost-batch-grid">
+                    <div id="prod-cost-wrap">
+                        <label class="block font-bold text-slate-700 mb-1">進貨成本 (管理職專填) *</label>
+                        <input type="number" id="prod-cost" min="0" class="w-full p-2.5 border border-emerald-200 bg-emerald-50/50 rounded-xl outline-none focus:border-emerald-500 font-bold font-mono text-emerald-700" placeholder="0">
                     </div>
-                    <div>
+                    <div id="prod-batch-wrap" class="col-span-1">
                         <label class="block font-bold text-slate-700 mb-1">生產批號 / 條碼 *</label>
                         <input type="text" id="prod-batch" class="w-full p-2.5 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-mono font-bold" placeholder="例如: LOT-2026A">
                     </div>
@@ -1015,28 +1032,52 @@
 
     <!-- 9. 進貨單 AP Modal -->
     <div id="modal-po" class="fixed inset-0 bg-slate-900/60 hidden items-center justify-center z-50 p-4 backdrop-blur-sm">
-        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
-            <div class="p-4 border-b bg-indigo-50 text-indigo-900 flex justify-between items-center">
-                <h3 class="font-black text-sm">建立進貨單 (應付帳款)</h3>
-                <button onclick="closeModal('modal-po')"><i class="fas fa-times"></i></button>
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="p-4 border-b bg-indigo-50 text-indigo-900 flex justify-between items-center shrink-0">
+                <div>
+                    <h3 class="font-black text-sm">建立進貨單 (應付帳款)</h3>
+                    <p class="text-[10px] text-indigo-700/70 font-medium">記錄進貨藥品、供應商、進貨價與建議售價</p>
+                </div>
+                <button onclick="closeModal('modal-po')" class="text-slate-400 hover:text-slate-600"><i class="fas fa-times"></i></button>
             </div>
-            <div class="p-5 space-y-3.5 text-xs">
+            <div class="p-5 overflow-y-auto space-y-3.5 text-xs flex-1">
                 <div>
-                    <label class="block font-bold text-slate-700 mb-1">藥品/商品供應商</label>
-                    <input type="text" id="po-vendor" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold" placeholder="例如: 裕利醫藥股份有限公司">
+                    <label class="block font-bold text-slate-700 mb-1">進貨藥品/品項名稱 *</label>
+                    <input type="text" id="po-item" list="po-items-datalist" oninput="onPOItemInput()" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="可輸入新藥品或點擊挑選庫存藥品">
+                    <datalist id="po-items-datalist"></datalist>
                 </div>
                 <div>
-                    <label class="block font-bold text-slate-700 mb-1">進貨總額 ($)</label>
-                    <input type="number" id="po-amount" min="1" class="w-full p-2.5 border border-indigo-200 bg-indigo-50/40 rounded-xl font-mono font-bold text-indigo-800">
+                    <label class="block font-bold text-slate-700 mb-1">藥品供應商 (廠商) *</label>
+                    <input type="text" id="po-vendor" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="例如: 裕利醫藥 / 台灣鹽野義 / 健喬信元">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">進貨價 (成本單價) *</label>
+                        <input type="number" id="po-cost" min="0" oninput="calcPOTotal()" class="w-full p-2.5 border border-emerald-200 bg-emerald-50/40 rounded-xl font-mono font-bold text-emerald-700 outline-none focus:border-emerald-500" placeholder="0">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">建議售價 (門市牌價) *</label>
+                        <input type="number" id="po-retail" min="0" class="w-full p-2.5 border border-indigo-200 bg-indigo-50/40 rounded-xl font-mono font-bold text-indigo-700 outline-none focus:border-indigo-500" placeholder="0">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">進貨數量 *</label>
+                        <input type="number" id="po-qty" min="1" value="1" oninput="calcPOTotal()" class="w-full p-2.5 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">進貨總額 ($) *</label>
+                        <input type="number" id="po-amount" min="0" class="w-full p-2.5 border border-slate-200 bg-slate-50 rounded-xl font-mono font-black text-slate-800 outline-none focus:border-indigo-500">
+                    </div>
                 </div>
                 <div>
-                    <label class="block font-bold text-slate-700 mb-1">備註/驗收批號</label>
-                    <input type="text" id="po-note" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold" placeholder="例如: 普拿疼與感冒膠囊批次驗收">
+                    <label class="block font-bold text-slate-700 mb-1">備註 / 驗收批號</label>
+                    <input type="text" id="po-note" class="w-full p-2.5 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="例如: 普拿疼與感冒膠囊批次驗收 (LOT-2026B)">
                 </div>
             </div>
-            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2">
-                <button onclick="closeModal('modal-po')" class="px-4 py-2 bg-slate-200 font-bold text-xs rounded-xl">取消</button>
-                <button onclick="savePO()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md">建立進貨帳款</button>
+            <div class="p-4 border-t bg-slate-50 flex justify-end gap-2 shrink-0">
+                <button onclick="closeModal('modal-po')" class="px-4 py-2 bg-slate-200 font-bold text-xs rounded-xl hover:bg-slate-300 transition-colors">取消</button>
+                <button onclick="savePO()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors">建立進貨帳款</button>
             </div>
         </div>
     </div>
@@ -2369,6 +2410,8 @@
 
             renderInventoryBadge();
 
+            const isManager = window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.role === 'subadmin');
+
             items.forEach(p => {
                 const isExp = isExpiringWithin90Days(p.expiry);
                 const isLow = p.stock <= p.safeStock;
@@ -2392,7 +2435,7 @@
                     </td>
                     <td class="p-3.5 font-mono">
                         <span class="text-indigo-600 font-bold">$${p.price}</span>
-                        <span class="text-slate-400 text-xs">/ 成本:$${p.cost || 0}</span>
+                        ${isManager ? `<span class="text-slate-400 text-xs">/ 成本:$${p.cost || 0}</span>` : ''}
                     </td>
                     <td class="p-3.5 text-center">
                         ${p.stock <= 0 ? '<span class="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[11px] font-bold">缺貨</span>' :
@@ -2448,6 +2491,27 @@
             document.getElementById('prod-safestock').value = '10';
             document.getElementById('prod-controlled').checked = false;
             document.getElementById('prod-level-wrap').classList.add('hidden');
+
+            // 權限控制：普通店員在新增庫存時不填進貨價，只有管理員和副管理員要填
+            const isManager = window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.role === 'subadmin');
+            const costWrap = document.getElementById('prod-cost-wrap');
+            const batchWrap = document.getElementById('prod-batch-wrap');
+            if (costWrap) {
+                if (isManager) {
+                    costWrap.classList.remove('hidden');
+                    if (batchWrap) {
+                        batchWrap.classList.remove('col-span-2');
+                        batchWrap.classList.add('col-span-1');
+                    }
+                } else {
+                    costWrap.classList.add('hidden');
+                    if (batchWrap) {
+                        batchWrap.classList.remove('col-span-1');
+                        batchWrap.classList.add('col-span-2');
+                    }
+                }
+            }
+
             window.openModal('modal-product');
         };
 
@@ -2456,13 +2520,26 @@
             const name = document.getElementById('prod-name').value.trim();
             const type = document.getElementById('prod-type').value;
             const price = parseInt(document.getElementById('prod-price').value) || 0;
-            const cost = parseInt(document.getElementById('prod-cost').value) || 0;
             const batch = document.getElementById('prod-batch').value.trim();
             const expiry = document.getElementById('prod-expiry').value;
             const stock = parseInt(document.getElementById('prod-stock').value) || 0;
             const safeStock = parseInt(document.getElementById('prod-safestock').value) || 10;
             const isControlled = document.getElementById('prod-controlled').checked;
             const level = parseInt(document.getElementById('prod-level').value) || 4;
+
+            // 權限控制：普通店員不填進貨價，保留原進貨價或預設 0
+            const isManager = window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.role === 'subadmin');
+            let cost = 0;
+            if (isManager) {
+                cost = parseInt(document.getElementById('prod-cost').value) || 0;
+            } else {
+                if (id) {
+                    const existing = window.db.inventory.find(x => x.id === id);
+                    cost = existing ? (existing.cost || 0) : 0;
+                } else {
+                    cost = 0;
+                }
+            }
 
             if (!name || !batch || !expiry) {
                 return window.showToast('請完整填寫品名、批號與有效期限', 'error');
@@ -2518,6 +2595,27 @@
             } else {
                 document.getElementById('prod-level-wrap').classList.add('hidden');
             }
+
+            // 權限控制：普通店員在編輯庫存時不填進貨價，只有管理員和副管理員要填
+            const isManager = window.currentUser && (window.currentUser.role === 'admin' || window.currentUser.role === 'subadmin');
+            const costWrap = document.getElementById('prod-cost-wrap');
+            const batchWrap = document.getElementById('prod-batch-wrap');
+            if (costWrap) {
+                if (isManager) {
+                    costWrap.classList.remove('hidden');
+                    if (batchWrap) {
+                        batchWrap.classList.remove('col-span-2');
+                        batchWrap.classList.add('col-span-1');
+                    }
+                } else {
+                    costWrap.classList.add('hidden');
+                    if (batchWrap) {
+                        batchWrap.classList.remove('col-span-1');
+                        batchWrap.classList.add('col-span-2');
+                    }
+                }
+            }
+
             window.openModal('modal-product');
         };
 
@@ -2729,14 +2827,19 @@
             const poBody = document.getElementById('acc-po-body');
             if (poBody) {
                 poBody.innerHTML = (window.db.purchases || []).map(p => `
-                    <tr class="hover:bg-slate-50">
-                        <td class="p-3 font-bold text-slate-800">${p.vendor} <div class="text-[10px] text-slate-400 font-normal">${p.time}</div></td>
-                        <td class="p-3 text-slate-500">${p.note || '-'}</td>
-                        <td class="p-3 text-right font-mono font-bold text-indigo-600">$${p.amount.toLocaleString()}</td>
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-3.5 text-slate-500 font-mono text-[11px]">${p.time || '-'}</td>
+                        <td class="p-3.5 font-bold text-slate-800">${p.itemName || p.item || '-'}</td>
+                        <td class="p-3.5 font-semibold text-slate-700">${p.vendor || '-'}</td>
+                        <td class="p-3.5 text-right font-mono font-bold text-emerald-600">$${(p.costPrice !== undefined ? p.costPrice : (p.cost || 0)).toLocaleString()}</td>
+                        <td class="p-3.5 text-right font-mono font-bold text-indigo-600">$${(p.retailPrice !== undefined ? p.retailPrice : (p.price || 0)).toLocaleString()}</td>
+                        <td class="p-3.5 text-right font-mono text-slate-600">${p.qty || 1}</td>
+                        <td class="p-3.5 text-right font-mono font-black text-slate-900">$${(p.amount || 0).toLocaleString()}</td>
+                        <td class="p-3.5 text-slate-500 text-xs">${p.note || '-'}</td>
                     </tr>
                 `).join('');
                 if (!window.db.purchases || window.db.purchases.length === 0) {
-                    poBody.innerHTML = `<tr><td colspan="3" class="p-6 text-center text-slate-400 font-bold text-xs">目前無進貨帳款</td></tr>`;
+                    poBody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400 font-bold text-xs"><i class="fas fa-boxes-packing text-2xl mb-1.5 opacity-40"></i><br>目前無進貨帳款紀錄</td></tr>`;
                 }
             }
 
@@ -2795,29 +2898,67 @@
         };
 
         window.openPOModal = function() {
+            const datalist = document.getElementById('po-items-datalist');
+            if (datalist) {
+                datalist.innerHTML = (window.db.inventory || []).map(i => `<option value="${i.name}"></option>`).join('');
+            }
+            document.getElementById('po-item').value = '';
             document.getElementById('po-vendor').value = '';
+            document.getElementById('po-cost').value = '';
+            document.getElementById('po-retail').value = '';
+            document.getElementById('po-qty').value = '1';
             document.getElementById('po-amount').value = '';
             document.getElementById('po-note').value = '';
             window.openModal('modal-po');
         };
 
+        window.calcPOTotal = function() {
+            const cost = parseFloat(document.getElementById('po-cost').value) || 0;
+            const qty = parseInt(document.getElementById('po-qty').value) || 1;
+            document.getElementById('po-amount').value = Math.round(cost * qty);
+        };
+
+        window.onPOItemInput = function() {
+            const val = document.getElementById('po-item').value.trim();
+            const matched = (window.db.inventory || []).find(i => i.name === val);
+            if (matched) {
+                if (!document.getElementById('po-cost').value) {
+                    document.getElementById('po-cost').value = matched.cost || '';
+                }
+                if (!document.getElementById('po-retail').value) {
+                    document.getElementById('po-retail').value = matched.price || '';
+                }
+                calcPOTotal();
+            }
+        };
+
         window.savePO = function() {
+            const item = document.getElementById('po-item').value.trim();
             const vendor = document.getElementById('po-vendor').value.trim();
-            const amt = parseInt(document.getElementById('po-amount').value) || 0;
+            const cost = parseInt(document.getElementById('po-cost').value) || 0;
+            const retail = parseInt(document.getElementById('po-retail').value) || 0;
+            const qty = parseInt(document.getElementById('po-qty').value) || 1;
+            let amt = parseInt(document.getElementById('po-amount').value);
+            if (isNaN(amt) || amt <= 0) amt = cost * qty;
             const note = document.getElementById('po-note').value.trim();
 
-            if (!vendor || amt <= 0) return window.showToast('請填寫供應商與有效進貨金額', 'error');
+            if (!item) return window.showToast('請填寫進貨藥品名稱', 'error');
+            if (!vendor) return window.showToast('請填寫供應商名稱', 'error');
 
             window.db.purchases.unshift({
                 id: generateId(),
+                itemName: item,
                 vendor: vendor,
+                costPrice: cost,
+                retailPrice: retail,
+                qty: qty,
                 amount: amt,
                 note: note,
                 time: new Date().toLocaleDateString(),
                 status: '未核銷'
             });
 
-            addAuditLog('進貨帳款', `建立進貨單: 供應商 ${vendor} $${amt}`);
+            addAuditLog('進貨帳款', `建立進貨單: 藥品【${item}】供應商【${vendor}】進貨價:$${cost} 建議售價:$${retail} 數量:${qty} 總額:$${amt}`);
             saveDB();
             renderAccounting();
             window.closeModal('modal-po');
